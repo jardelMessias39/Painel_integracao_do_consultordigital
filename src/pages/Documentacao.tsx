@@ -203,6 +203,62 @@ Esta camada foi construída exclusivamente para receber chamadas SERVER-TO-SERVE
 
   return (
     <div className="space-y-6">
+      {/* Arquitetura em Camadas (ADR-001) */}
+      <Card className="border-slate-200 bg-white shadow-2xs">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <Layers className="h-4 w-4 text-[#0F766E]" />
+            <Badge className="bg-slate-100 text-slate-700 border-slate-200 text-xs">ADR-001</Badge>
+            <span className="text-xs text-slate-500">Arquitetura de Backend Desacoplada</span>
+          </div>
+          <CardTitle className="text-base font-bold text-slate-900 mt-1">
+            Separação em Camadas: Transporte → Infra → Tool Registry → Domínio → Persistência
+          </CardTitle>
+          <CardDescription className="text-xs text-slate-500">
+            A capability de leads opera isolada do protocolo HTTP. Um futuro adaptador MCP poderá
+            consumir a mesma lógica sem duplicação de regras de negócio ou de persistência.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-2 text-xs">
+            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50">
+              <span className="font-semibold text-slate-900 block mb-1">1. Transporte</span>
+              <p className="text-slate-600 text-[11px]">
+                Lê requisições HTTP, orquestra camadas e formata os envelopes estáveis. Zero regra
+                de negócio.
+              </p>
+            </div>
+            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50">
+              <span className="font-semibold text-slate-900 block mb-1">2. Infraestrutura</span>
+              <p className="text-slate-600 text-[11px]">
+                Autenticação X-API-Key em tempo constante (fail-closed), rate limit (120 req/min) e
+                audit logger unificado (LGPD).
+              </p>
+            </div>
+            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50">
+              <span className="font-semibold text-slate-900 block mb-1">3. Tool Registry</span>
+              <p className="text-slate-600 text-[11px]">
+                Catálogo de capabilities com contrato canônico (nome, escopo, inputSchema e run).
+              </p>
+            </div>
+            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50">
+              <span className="font-semibold text-slate-900 block mb-1">4. Domínio</span>
+              <p className="text-slate-600 text-[11px]">
+                Regras de negócio, sanitização, enum fechado de estágio e idempotência
+                (email+empresa). Desacoplado de HTTP/PocketBase.
+              </p>
+            </div>
+            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50">
+              <span className="font-semibold text-slate-900 block mb-1">5. Persistência</span>
+              <p className="text-slate-600 text-[11px]">
+                Adaptador PocketBase que implementa a porta do repositório. Único ponto de contato
+                com a coleção leads.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Top Banner de Instruções Rápidas */}
       <Card className="border-teal-200 bg-white shadow-2xs">
         <CardHeader className="pb-3">
