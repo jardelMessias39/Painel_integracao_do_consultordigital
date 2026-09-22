@@ -11,8 +11,7 @@ import {
   ExternalLink,
   RefreshCw,
   Wrench,
-  Check,
-  Copy,
+  KeyRound,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -43,8 +42,6 @@ export default function Index() {
   const [metrics, setMetrics] = useState({ total: 0, success: 0, rateLimited: 0, successRate: 100 })
   const [recentLogs, setRecentLogs] = useState<ToolLogRecord[]>([])
   const [allLeads, setAllLeads] = useState<LeadRecord[]>([])
-  const [copiedKey, setCopiedKey] = useState(false)
-
   const loadData = useCallback(async () => {
     try {
       setIsLoading(true)
@@ -119,16 +116,6 @@ export default function Index() {
     return Object.values(days)
   }, [allLeads])
 
-  const copyApiKey = () => {
-    navigator.clipboard.writeText(INTEGRATION_CONFIG.defaultApiKey)
-    setCopiedKey(true)
-    toast({
-      title: 'Chave copiada!',
-      description: 'Chave de API do Consultor Digital copiada para a área de transferência.',
-    })
-    setTimeout(() => setCopiedKey(false), 2500)
-  }
-
   return (
     <div className="space-y-6">
       {/* Welcome Banner */}
@@ -157,15 +144,11 @@ export default function Index() {
           <Button
             variant="outline"
             size="sm"
-            onClick={copyApiKey}
+            onClick={() => navigate('/docs')}
             className="bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs flex items-center gap-1.5"
           >
-            {copiedKey ? (
-              <Check className="h-3.5 w-3.5 text-emerald-300" />
-            ) : (
-              <Copy className="h-3.5 w-3.5" />
-            )}
-            <span>{copiedKey ? 'Copiado!' : 'Copiar API Key'}</span>
+            <KeyRound className="h-3.5 w-3.5 text-emerald-300" />
+            <span>Guia de Autenticação</span>
           </Button>
 
           <Button
