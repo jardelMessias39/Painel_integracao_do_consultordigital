@@ -1,0 +1,223 @@
+{
+  "generatedAt": "2026-09-22T02:58:37.295Z",
+  "collections": [
+    {
+      "name": "users",
+      "type": "auth",
+      "apiRules": {
+        "list": "id = @request.auth.id",
+        "view": "id = @request.auth.id",
+        "create": "",
+        "update": "id = @request.auth.id",
+        "delete": "id = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "avatar",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX `idx_tokenKey__pb_users_auth_` ON `users` (`tokenKey`)",
+        "CREATE UNIQUE INDEX `idx_email__pb_users_auth_` ON `users` (`email`) WHERE `email` != ''"
+      ]
+    },
+    {
+      "name": "leads",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": null,
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "empresa",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "telefone",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "necessidade_identificada",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "problema_relatado",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "requisitos",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "solucao_sugerida",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "resumo_conversa",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "estagio_do_lead",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["novo", "qualificado", "proposta", "descartado"]
+        },
+        {
+          "name": "proximo_passo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "request_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_leads_email_empresa ON leads (email, empresa)",
+        "CREATE INDEX idx_leads_estagio ON leads (estagio_do_lead)",
+        "CREATE INDEX idx_leads_created ON leads (created DESC)"
+      ]
+    },
+    {
+      "name": "tool_logs",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "ferramenta",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "resultado",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["sucesso", "erro"]
+        },
+        {
+          "name": "error_code",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "request_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "duracao_ms",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "http_status",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_tool_logs_request_id ON tool_logs (request_id)",
+        "CREATE INDEX idx_tool_logs_resultado ON tool_logs (resultado)",
+        "CREATE INDEX idx_tool_logs_ferramenta ON tool_logs (ferramenta)",
+        "CREATE INDEX idx_tool_logs_created ON tool_logs (created DESC)"
+      ]
+    }
+  ]
+}
