@@ -15,7 +15,7 @@
 // 6. MCP Readyness: Um futuro adaptador MCP poderá invocar diretamente registry.get('create_lead').run(...)
 //    reutilizando as camadas de Domínio e Persistência sem duplicação.
 // 7. Contrato externo 100% preservado (mesmo path, mesmos envelopes, mesmos status e códigos).
-// 8. Fail-closed: se CONSULTOR_API_KEY não estiver no ambiente, retorna 500 INTERNAL_ERROR e loga o erro.
+// 8. Fail-closed: se CONSULTOR_API_KEY não estiver nos secrets ($secrets.get), retorna 500 INTERNAL_ERROR e loga o erro.
 
 routerAdd('POST', '/backend/v1/tools/create_lead', (e) => {
   const startTime = Date.now()
@@ -60,10 +60,10 @@ routerAdd('POST', '/backend/v1/tools/create_lead', (e) => {
 
     // 1.3 Autenticação Server-to-Server (Fail-Closed: NUNCA usar chave hardcoded como fallback)
     authenticate: (request) => {
-      const configuredKey = $os.getenv('CONSULTOR_API_KEY')
+      const configuredKey = $secrets.get('CONSULTOR_API_KEY')
       if (!configuredKey || !configuredKey.trim()) {
         console.error(
-          '[SECURITY] CONSULTOR_API_KEY não configurada no ambiente. Bloqueando requisição (fail-closed).',
+          '[SECURITY] CONSULTOR_API_KEY não configurada nos secrets. Bloqueando requisição (fail-closed).',
         )
         return {
           authorized: false,

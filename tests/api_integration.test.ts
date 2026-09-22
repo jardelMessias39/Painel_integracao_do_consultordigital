@@ -21,9 +21,13 @@ interface RequestMock {
   body?: any
 }
 
+interface SecretsMock {
+  get: (key: string) => string | undefined
+}
+
 function handleCreateLeadRequest(
   request: RequestMock,
-  env: { CONSULTOR_API_KEY?: string },
+  secrets: SecretsMock,
   dbState: {
     leads: any[]
     tool_logs: any[]
@@ -81,8 +85,8 @@ function handleCreateLeadRequest(
     }
   }
 
-  // 3. Autenticação fail-closed
-  const configuredKey = env.CONSULTOR_API_KEY
+  // 3. Autenticação fail-closed via $secrets.get
+  const configuredKey = secrets.get('CONSULTOR_API_KEY')
   if (!configuredKey || !configuredKey.trim()) {
     return sendErrorEnvelope(
       500,
@@ -256,16 +260,20 @@ function handleCreateLeadRequest(
 describe('Integration Layer - Testes de API e Requisitos de Segurança', () => {
   const TEST_VALID_KEY = 'sk_test_local_only_999999999999'
 
-  it('1. Fail-closed: Quando CONSULTOR_API_KEY não existe no ambiente, deve retornar 500 INTERNAL_ERROR', () => {
+  const createSecretsMock = (store: Record<string, string>): SecretsMock => ({
+    get: (key: string) => store[key],
+  })
+
+  it('1. Fail-closed: Quando CONSULTOR_API_KEY não existe nos secrets ($secrets.get), deve retornar 500 INTERNAL_ERROR', () => {
     const dbState = { leads: [], tool_logs: [], rateLimitStore: {} }
     const req: RequestMock = {
       header: new Map([['x-api-key', TEST_VALID_KEY]]),
       body: { nome: 'Teste', empresa: 'Empresa', email: 'teste@empresa.com' },
     }
 
-    // Ambiente SEM CONSULTOR_API_KEY (exatamente a situação de produção constatada no list_secrets)
-    const env = {}
-    const res = handleCreateLeadRequest(req, env, dbState)
+    // Secrets sem CONSULTOR_API_KEY
+    const secrets = createSecretsMock({})
+    const res = handleCreateLeadRequest(req, secrets, dbState)
 
     assert.strictEqual(res.status, 500)
     assert.strictEqual(res.body.ok, false)
@@ -286,8 +294,8 @@ describe('Integration Layer - Testes de API e Requisitos de Segurança', () => {
       header: new Map(), // Sem X-API-Key
       body: { nome: 'Teste', empresa: 'Empresa', email: 'teste@empresa.com' },
     }
-    const env = { CONSULTOR_API_KEY: TEST_VALID_KEY }
-    const res = handleCreateLeadRequest(req, env, dbState)
+    const secrets = createSecretsMock({ CONSULTOR_API_KEY: TEST_VALID_KEY })
+    const res = handleCreateLeadRequest(req, secrets, dbState)
 
     assert.strictEqual(res.status, 401)
     assert.strictEqual(res.body.ok, false)
@@ -303,8 +311,8 @@ describe('Integration Layer - Testes de API e Requisitos de Segurança', () => {
       header: new Map([['x-api-key', 'chave_incorreta_12345']]),
       body: { nome: 'Teste', empresa: 'Empresa', email: 'teste@empresa.com' },
     }
-    const env = { CONSULTOR_API_KEY: TEST_VALID_KEY }
-    const res = handleCreateLeadRequest(req, env, dbState)
+    const secrets = createSecretsMock({ CONSULTOR_API_KEY: TEST_VALID_KEY })
+    const res = handleCreateLeadRequest(req, secrets, dbState)
 
     assert.strictEqual(res.status, 401)
     assert.strictEqual(res.body.ok, false)
@@ -322,8 +330,8 @@ describe('Integration Layer - Testes de API e Requisitos de Segurança', () => {
         estagio_do_lead: 'status_inexistente',
       },
     }
-    const env = { CONSULTOR_API_KEY: TEST_VALID_KEY }
-    const res = handleCreateLeadRequest(req, env, dbState)
+    const secrets = createSecretsMock({ CONSULTOR_API_KEY: TEST_VALID_KEY })
+    const res = handleCreateLeadRequest(req, secrets, dbState)
 
     assert.strictEqual(res.status, 400)
     assert.strictEqual(res.body.ok, false)
@@ -348,8 +356,8 @@ describe('Integration Layer - Testes de API e Requisitos de Segurança', () => {
         estagio_do_lead: 'proposta',
       },
     }
-    const env = { CONSULTOR_API_KEY: TEST_VALID_KEY }
-    const res = handleCreateLeadRequest(req, env, dbState)
+    const secrets = createSecretsMock({ CONSULTOR_API_KEY: TEST_VALID_KEY })
+    const res = handleCreateLeadRequest(req, secrets, dbState)
 
     assert.strictEqual(res.status, 201)
     assert.strictEqual(res.body.ok, true)
@@ -368,7 +376,7 @@ describe('Integration Layer - Testes de API e Requisitos de Segurança', () => {
 
   it('6. Idempotência / Repetição: Mesma chave email+empresa deve retornar 200 com duplicado: true sem criar segunda linha', () => {
     const dbState = { leads: [], tool_logs: [], rateLimitStore: {} }
-    const env = { CONSULTOR_API_KEY: TEST_VALID_KEY }
+    const secrets = createSecretsMock({ CONSULTOR_API_KEY: TEST_VALID_KEY })
     const req1: RequestMock = {
       header: new Map([['x-api-key', TEST_VALID_KEY]]),
       body: {
@@ -379,7 +387,7 @@ describe('Integration Layer - Testes de API e Requisitos de Segurança', () => {
       },
     }
 
-    const res1 = handleCreateLeadRequest(req1, env, dbState)
+    const res1 = handleCreateLeadRequest(req1, secrets, dbState)
     assert.strictEqual(res1.status, 201)
     assert.strictEqual(res1.body.data.duplicado, false)
     const initialLeadId = res1.body.data.lead_id
@@ -395,7 +403,7 @@ describe('Integration Layer - Testes de API e Requisitos de Segurança', () => {
       },
     }
 
-    const res2 = handleCreateLeadRequest(req2, env, dbState)
+    const res2 = handleCreateLeadRequest(req2, secrets, dbState)
     assert.strictEqual(res2.status, 200)
     assert.strictEqual(res2.body.ok, true)
     assert.strictEqual(res2.body.data.duplicado, true)
@@ -405,7 +413,7 @@ describe('Integration Layer - Testes de API e Requisitos de Segurança', () => {
 
   it('7. Rate Limiting: Acima de 120 requisições por minuto deve responder 429 RATE_LIMITED', () => {
     const dbState = { leads: [], tool_logs: [], rateLimitStore: {} }
-    const env = { CONSULTOR_API_KEY: TEST_VALID_KEY }
+    const secrets = createSecretsMock({ CONSULTOR_API_KEY: TEST_VALID_KEY })
 
     // Preenche o contador até 120
     const minute = Math.floor(Date.now() / 60000)
@@ -418,7 +426,7 @@ describe('Integration Layer - Testes de API e Requisitos de Segurança', () => {
       body: { nome: 'Rate', empresa: 'Limit', email: 'rate@limit.com' },
     }
 
-    const res = handleCreateLeadRequest(req, env, dbState)
+    const res = handleCreateLeadRequest(req, secrets, dbState)
     assert.strictEqual(res.status, 429)
     assert.strictEqual(res.body.ok, false)
     assert.strictEqual(res.body.error.code, 'RATE_LIMITED')
@@ -427,7 +435,7 @@ describe('Integration Layer - Testes de API e Requisitos de Segurança', () => {
 
   it('8. Auditoria LGPD em tool_logs: NÃO deve conter PII (nome, email, telefone, resumo) nem API key', () => {
     const dbState = { leads: [], tool_logs: [], rateLimitStore: {} }
-    const env = { CONSULTOR_API_KEY: TEST_VALID_KEY }
+    const secrets = createSecretsMock({ CONSULTOR_API_KEY: TEST_VALID_KEY })
 
     const rawLead = {
       nome: 'Sensível Silva',
@@ -443,7 +451,7 @@ describe('Integration Layer - Testes de API e Requisitos de Segurança', () => {
       body: rawLead,
     }
 
-    handleCreateLeadRequest(req, env, dbState)
+    handleCreateLeadRequest(req, secrets, dbState)
     assert.strictEqual(dbState.tool_logs.length, 1)
 
     const logRecord = dbState.tool_logs[0]
