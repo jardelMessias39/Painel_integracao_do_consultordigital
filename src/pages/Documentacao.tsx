@@ -24,7 +24,6 @@ import { useToast } from '@/hooks/use-toast'
 
 export default function Documentacao() {
   const { toast } = useToast()
-  const [copiedKey, setCopiedKey] = useState(false)
   const [copiedSnippet, setCopiedSnippet] = useState<string | null>(null)
 
   const baseUrl = INTEGRATION_CONFIG.backendUrl
@@ -38,16 +37,6 @@ export default function Documentacao() {
       description: `${label} copiado com sucesso!`,
     })
     setTimeout(() => setCopiedSnippet(null), 2500)
-  }
-
-  const copyApiKey = () => {
-    navigator.clipboard.writeText(INTEGRATION_CONFIG.defaultApiKey)
-    setCopiedKey(true)
-    toast({
-      title: 'Chave copiada!',
-      description: 'Chave de API do Consultor Digital copiada.',
-    })
-    setTimeout(() => setCopiedKey(false), 2500)
   }
 
   // Exemplos de payloads
@@ -123,7 +112,7 @@ export default function Documentacao() {
 
   const curlExample = `curl -X POST "${fullEndpoint}" \\
   -H "Content-Type: application/json" \\
-  -H "X-API-Key: ${INTEGRATION_CONFIG.defaultApiKey}" \\
+  -H "X-API-Key: <SUA_CONSULTOR_API_KEY>" \\
   -d '${sampleRequestPayload}'`
 
   const nodeExample = `// Chamada server-to-server a partir do backend do chatbot
@@ -158,7 +147,7 @@ Esta camada foi construída exclusivamente para receber chamadas SERVER-TO-SERVE
 
 2. HEADERS OBRIGATÓRIOS:
    - Content-Type: application/json
-   - X-API-Key: ${INTEGRATION_CONFIG.defaultApiKey}
+   - X-API-Key: <SUA_CONSULTOR_API_KEY>
 
 3. PAYLOAD JSON:
 {
@@ -311,32 +300,35 @@ Esta camada foi construída exclusivamente para receber chamadas SERVER-TO-SERVE
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50 font-mono text-xs">
-              <span className="text-slate-500 select-none">X-API-Key:</span>
+              <span className="text-slate-500 select-none">Header:</span>
               <span className="text-slate-900 font-semibold truncate flex-1">
-                {INTEGRATION_CONFIG.defaultApiKey}
+                X-API-Key: &lt;SUA_CONSULTOR_API_KEY&gt;
               </span>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={copyApiKey}
+                onClick={() =>
+                  copyToClipboard('X-API-Key: <SUA_CONSULTOR_API_KEY>', 'Header X-API-Key')
+                }
                 className="h-7 text-xs text-teal-800 hover:text-teal-900 hover:bg-teal-50 shrink-0"
               >
-                {copiedKey ? (
+                {copiedSnippet === 'Header X-API-Key' ? (
                   <Check className="h-3.5 w-3.5 text-emerald-600 mr-1" />
                 ) : (
                   <Copy className="h-3.5 w-3.5 mr-1" />
                 )}
-                {copiedKey ? 'Copiado!' : 'Copiar'}
+                {copiedSnippet === 'Header X-API-Key' ? 'Copiado!' : 'Copiar'}
               </Button>
             </div>
 
             <div className="flex items-start gap-2 p-3 rounded-md bg-amber-50 border border-amber-200 text-xs text-amber-900">
               <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
               <p>
-                <strong>Atenção de Segurança:</strong> Armazene esta chave apenas em variáveis de
-                ambiente do servidor do chatbot (
-                <code className="font-mono">process.env.CONSULTOR_API_KEY</code>). Não a exponha no
-                código cliente (React/Vite).
+                <strong>Atenção de Segurança:</strong> A chave real vive em segredo no backend do
+                Skip Cloud (<code className="font-mono">CONSULTOR_API_KEY</code>) e deve ser
+                configurada exclusivamente nas variáveis de ambiente do backend do seu chatbot (
+                <code className="font-mono">process.env.CONSULTOR_API_KEY</code>). NUNCA exponha ou
+                coloque o valor da chave no frontend, bundles Vite/React ou repositórios públicos.
               </p>
             </div>
           </CardContent>

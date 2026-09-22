@@ -254,7 +254,7 @@ function handleCreateLeadRequest(
 }
 
 describe('Integration Layer - Testes de API e Requisitos de Segurança', () => {
-  const TEST_VALID_KEY = 'sk_live_consultor_digital_v1_98a7f23c0b4e'
+  const TEST_VALID_KEY = 'sk_test_local_only_999999999999'
 
   it('1. Fail-closed: Quando CONSULTOR_API_KEY não existe no ambiente, deve retornar 500 INTERNAL_ERROR', () => {
     const dbState = { leads: [], tool_logs: [], rateLimitStore: {} }

@@ -14,7 +14,6 @@ export const toolRegistryList: ToolDefinition[] = [
 
 export const INTEGRATION_CONFIG = {
   version: 'v1.0.0',
-  defaultApiKey: 'sk_live_consultor_digital_v1_98a7f23c0b4e',
   backendUrl:
     import.meta.env.VITE_POCKETBASE_URL ||
     'https://integracao-de-ferramentas-do-consultor-e38b8.shrd00.internal.goskip.dev',
