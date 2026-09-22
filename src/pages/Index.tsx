@@ -144,7 +144,7 @@ export default function Index() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => navigate('/docs')}
+            onClick={() => navigate('/documentacao')}
             className="bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs flex items-center gap-1.5"
           >
             <KeyRound className="h-3.5 w-3.5 text-emerald-300" />
