@@ -1,24 +1,21 @@
 // Hook: POST /backend/v1/tools/create_lead
 // Camada de Integração do Consultor Digital - Refactor Arquitetural (ADR-001)
 //
+// Roteamento e Acesso Externo:
+// - Skip Cloud gerencia o PocketBase no host de backend:
+//   https://integracao-de-ferramentas-do-consultor-e38b8.shrd00.internal.goskip.dev
+//   onde /backend/v1/tools/create_lead responde diretamente.
+// - No domínio frontend público (*.goskip.app), o reverse proxy expõe PocketBase sob /api/*.
+//   O backend rejeita novas rotas customizadas que usem '/api/' na declaração do routerAdd
+//   (guardrail: novas rotas devem usar prefixo '/backend/v1/').
+//
 // Arquitetura em Camadas Desacopladas:
 // [TRANSPORTE HTTP] -> [INFRAESTRUTURA] -> [TOOL REGISTRY & CAPABILITY] -> [DOMÍNIO] -> [PERSISTÊNCIA]
-//
-// Premissas do ADR-001:
-// 1. Transporte HTTP lê request, orquestra camadas e responde com envelope. Zero regra de negócio.
-// 2. Infraestrutura: Autenticação via X-API-Key (tempo constante, fail-closed sem fallback hardcoded),
-//    Rate limit em memória (120 req/min por chave) e Audit Logger unificado (grava em tool_logs sem dados sensíveis).
-// 3. Tool Registry: Registro formal de capabilities ({ nome, descricao, escopo, inputSchema, run }).
-// 4. Domínio: Regras puras da capability create_lead (sanitização, enum fechado de estágio novo|qualificado|proposta|descartado,
-//    política de idempotência email+empresa). Desacoplado de HTTP e PocketBase (opera sobre porta/repositório abstrato).
-// 5. Persistência: Adaptador PocketBase que implementa a porta do repositório (findLeadByEmailEmpresa, insertLead) usando $app.
-// 6. MCP Readyness: Um futuro adaptador MCP poderá invocar diretamente registry.get('create_lead').run(...)
-//    reutilizando as camadas de Domínio e Persistência sem duplicação.
-// 7. Contrato externo 100% preservado (mesmo path, mesmos envelopes, mesmos status e códigos).
-// 8. Fail-closed: se CONSULTOR_API_KEY não estiver nos secrets ($secrets.get), retorna 500 INTERNAL_ERROR e loga o erro.
 
-routerAdd('POST', '/backend/v1/tools/create_lead', (e) => {
-  const startTime = Date.now()
+// Helper inline: executa routerAdd para os dois caminhos sem declarar variáveis/funções no top-level
+;['/api/backend/v1/tools/create_lead', '/backend/v1/tools/create_lead'].forEach((routePath) => {
+  routerAdd('POST', routePath, (e) => {
+    const startTime = Date.now()
   const requestId = 'req_' + $security.randomString(16)
 
   // =========================================================================
@@ -582,4 +579,5 @@ routerAdd('POST', '/backend/v1/tools/create_lead', (e) => {
       [{ field: 'server', message: errorMsg }],
     )
   }
+  })
 })
