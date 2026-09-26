@@ -288,7 +288,24 @@ O Integration Layer não deve decidir: "esse cliente parece interessado." Essa d
     id: 'sec-26',
     number: 26,
     title: 'Contrato operacional da ferramenta',
-    content: `A especificação de payloads de entrada, sucesso e erro para a execução de create_lead:`,
+    content: [
+      'A especificação de payloads de entrada, sucesso e erro para a execução de create_lead.',
+      '',
+      'Endpoints suportados:',
+      '• Rota pública externa (Skip Cloud): POST ' +
+        [
+          'https:',
+          '',
+          'integracao-de-ferramentas-do-consultor-e38b8.goskip.app',
+          'api',
+          'backend',
+          'v1',
+          'tools',
+          'create_lead',
+        ].join('/') +
+        ' (no domínio público do Skip, apenas o prefixo /api/ é roteado ao PocketBase).',
+      '• Rota direta / interna: POST /backend/v1/tools/create_lead (permanece ativa para acesso direto/interno).',
+    ].join('\n'),
     codeBlocks: [
       {
         language: 'json',
