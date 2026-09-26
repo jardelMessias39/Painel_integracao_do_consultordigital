@@ -104,9 +104,9 @@ export default function Layout() {
           </div>
           <p
             className="text-[11px] text-slate-500 font-mono truncate"
-            title={INTEGRATION_CONFIG.endpointPath}
+            title={INTEGRATION_CONFIG.publicEndpointPath}
           >
-            POST {INTEGRATION_CONFIG.endpointPath}
+            POST {INTEGRATION_CONFIG.publicEndpointPath}
           </p>
         </div>
 

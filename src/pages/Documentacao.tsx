@@ -21,8 +21,10 @@ export default function Documentacao() {
   const { toast } = useToast()
   const [copiedSnippet, setCopiedSnippet] = useState<string | null>(null)
 
-  const baseUrl = INTEGRATION_CONFIG.backendUrl
-  const fullEndpoint = `${baseUrl}${INTEGRATION_CONFIG.endpointPath}`
+  const publicBaseUrl = INTEGRATION_CONFIG.publicDomain
+  const publicEndpoint = `${publicBaseUrl}${INTEGRATION_CONFIG.publicEndpointPath}`
+  const internalBaseUrl = INTEGRATION_CONFIG.backendUrl
+  const internalEndpoint = `${internalBaseUrl}${INTEGRATION_CONFIG.internalEndpointPath}`
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text)
@@ -105,16 +107,17 @@ export default function Documentacao() {
     2,
   )
 
-  const curlExample = `curl -X POST "${fullEndpoint}" \\
+  const curlExample = `curl -X POST "${publicEndpoint}" \\
   -H "Content-Type: application/json" \\
   -H "X-API-Key: <SUA_CONSULTOR_API_KEY>" \\
   -d '${sampleRequestPayload}'`
 
-  const nodeExample = `// Chamada server-to-server a partir do backend do chatbot
-import fetch from 'node-fetch';
+  const nodeExample = `// Chamada server-to-server a partir do backend do chatbot (Consultor Digital)
+// Endpoint público funcional via domínio Skip Cloud (roteamento /api/*):
+const INTEGRATION_LAYER_URL = '${publicEndpoint}';
 
 async function registrarLeadConsultor(leadData) {
-  const response = await fetch('${fullEndpoint}', {
+  const response = await fetch(INTEGRATION_LAYER_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -137,8 +140,12 @@ async function registrarLeadConsultor(leadData) {
 
 Esta camada foi construída exclusivamente para receber chamadas SERVER-TO-SERVER vindas do backend do seu chatbot "Consultor Digital". NUNCA coloque a chave de API no frontend ou no bundle do navegador!
 
-1. ENDPOINT DE PRODUÇÃO (POST):
-   ${fullEndpoint}
+1. ENDPOINT PÚBLICO DE PRODUÇÃO (POST):
+   ${publicEndpoint}
+
+   * Nota de infraestrutura: No domínio público do Skip Cloud (*.goskip.app), apenas o prefixo /api/
+     é roteado ao backend PocketBase. Portanto a URL externa funcional é /api/backend/v1/tools/create_lead.
+     O caminho /backend/v1/tools/create_lead permanece registrado para acesso interno/direto.
 
 2. HEADERS OBRIGATÓRIOS:
    - Content-Type: application/json
@@ -298,6 +305,40 @@ Esta camada foi construída exclusivamente para receber chamadas SERVER-TO-SERVE
             </CardContent>
           </Card>
 
+          {/* Banner de Roteamento de Infraestrutura do Skip Cloud */}
+          <Card className="border-sky-200 bg-sky-50/40 shadow-2xs">
+            <CardHeader className="pb-2 pt-3">
+              <div className="flex items-start gap-2.5">
+                <Server className="h-4 w-4 text-sky-700 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <CardTitle className="text-sm font-bold text-sky-950">
+                    Roteamento do Domínio Público Skip (*.goskip.app)
+                  </CardTitle>
+                  <CardDescription className="text-xs text-sky-800 leading-relaxed">
+                    No domínio público da plataforma Skip,{' '}
+                    <strong>
+                      apenas caminhos sob o prefixo{' '}
+                      <code className="font-mono bg-sky-100/80 px-1 py-0.5 rounded text-sky-900">
+                        /api/*
+                      </code>{' '}
+                      são roteados ao backend PocketBase
+                    </strong>{' '}
+                    (os demais caminhos recebem 405 do nginx ou caem no fallback da SPA). Portanto,
+                    chamadores externos (como o Consultor Digital) devem utilizar a URL pública com
+                    o prefixo:{' '}
+                    <code className="font-mono bg-white border border-sky-200 px-1.5 py-0.5 rounded font-bold text-sky-900">
+                      /api/backend/v1/tools/create_lead
+                    </code>
+                    . A rota{' '}
+                    <code className="font-mono text-slate-600">/backend/v1/tools/create_lead</code>{' '}
+                    permanece registrada e idêntica para compatibilidade e acesso direto ao host
+                    interno do PocketBase.
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+
           {/* Top Banner de Instruções Rápidas */}
           <Card className="border-teal-200 bg-white shadow-2xs">
             <CardHeader className="pb-3">
@@ -308,7 +349,7 @@ Esta camada foi construída exclusivamente para receber chamadas SERVER-TO-SERVE
                       Contrato da API v1
                     </Badge>
                     <span className="text-xs text-slate-500 font-mono">
-                      POST {INTEGRATION_CONFIG.endpointPath}
+                      POST {INTEGRATION_CONFIG.publicEndpointPath}
                     </span>
                   </div>
                   <CardTitle className="text-lg font-bold text-slate-900 mt-1">
@@ -392,24 +433,36 @@ Esta camada foi construída exclusivamente para receber chamadas SERVER-TO-SERVE
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-semibold text-slate-900 flex items-center gap-2">
                   <Server className="h-4 w-4 text-blue-600" />
-                  Endpoint URL
+                  Endpoint URL (Pública)
                 </CardTitle>
                 <CardDescription className="text-xs text-slate-500">
-                  URL completa da rota customizada
+                  URL pública funcional no domínio Skip Cloud
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="p-2.5 rounded-lg border border-slate-200 bg-slate-50 font-mono text-xs text-slate-800 break-all">
-                  {fullEndpoint}
+              <CardContent className="space-y-2">
+                <div className="p-2 rounded-lg border border-teal-200 bg-teal-50/50 font-mono text-xs text-teal-950 break-all">
+                  <span className="text-[10px] text-teal-700 block font-sans font-medium mb-0.5">
+                    URL Externa (Consultor Digital):
+                  </span>
+                  {publicEndpoint}
                 </div>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => copyToClipboard(fullEndpoint, 'Endpoint URL')}
-                  className="w-full text-xs border-slate-200 text-slate-700"
+                  onClick={() => copyToClipboard(publicEndpoint, 'URL Pública')}
+                  className="w-full text-xs border-teal-200 text-teal-800 hover:bg-teal-50"
                 >
-                  {copiedSnippet === 'Endpoint URL' ? 'Copiado!' : 'Copiar URL do Endpoint'}
+                  {copiedSnippet === 'URL Pública' ? 'Copiado!' : 'Copiar URL Pública'}
                 </Button>
+
+                <div className="pt-2 border-t border-slate-100">
+                  <span className="text-[10px] text-slate-500 block mb-1">
+                    Acesso direto / interno PocketBase:
+                  </span>
+                  <div className="p-1.5 rounded border border-slate-200 bg-slate-50 font-mono text-[11px] text-slate-600 break-all">
+                    {internalEndpoint}
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </div>

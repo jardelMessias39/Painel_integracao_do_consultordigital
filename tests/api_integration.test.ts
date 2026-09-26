@@ -1,7 +1,9 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert'
 
-// Simulação da camada de infraestrutura e orquestração do hook POST /backend/v1/tools/create_lead
+// Simulação da camada de infraestrutura e orquestração dos endpoints:
+// - POST /api/backend/v1/tools/create_lead (Rota pública no domínio Skip)
+// - POST /backend/v1/tools/create_lead (Rota canônica interna PocketBase)
 // Reproduz com exatidão as regras do hook em pocketbase/hooks/create_lead_tool.js
 
 function constantTimeCompare(a: string, b: string): boolean {
@@ -485,5 +487,80 @@ describe('Integration Layer - Testes de API e Requisitos de Segurança', () => {
     assert.ok('http_status' in logRecord)
     assert.strictEqual(typeof logRecord.duracao_ms, 'number')
     assert.strictEqual(typeof logRecord.http_status, 'number')
+  })
+
+  it('9. Dual-path: O mesmo handler responde identicamente nos dois caminhos (/api/backend/v1/tools/create_lead e /backend/v1/tools/create_lead)', () => {
+    const supportedRoutes = [
+      '/api/backend/v1/tools/create_lead',
+      '/backend/v1/tools/create_lead',
+    ]
+
+    for (const route of supportedRoutes) {
+      const dbState = { leads: [], tool_logs: [], rateLimitStore: {} }
+      const secrets = createSecretsMock({ CONSULTOR_API_KEY: TEST_VALID_KEY })
+
+      // 9.1 Sucesso na criação (201)
+      const req: RequestMock = {
+        header: new Map([['x-api-key', TEST_VALID_KEY]]),
+        body: {
+          nome: 'Marcos Vinicius',
+          empresa: 'TransLog Brasil',
+          email: 'marcos@translog.com.br',
+          estagio_do_lead: 'novo',
+        },
+      }
+
+      const res = handleCreateLeadRequest(req, secrets, dbState)
+      assert.strictEqual(res.status, 201, `Status em ${route} deve ser 201`)
+      assert.strictEqual(res.body.ok, true, `Envelope ok em ${route} deve ser true`)
+      assert.strictEqual(res.body.data.duplicado, false)
+      assert.strictEqual(res.body.data.estagio_do_lead, 'novo')
+      assert.ok(res.body.data.lead_id)
+      assert.strictEqual(dbState.leads.length, 1)
+      assert.strictEqual(dbState.tool_logs.length, 1)
+      assert.strictEqual(dbState.tool_logs[0].resultado, 'sucesso')
+      assert.strictEqual(dbState.tool_logs[0].http_status, 201)
+
+      // 9.2 Idempotência na repetição (200, duplicado: true)
+      const reqDup: RequestMock = {
+        header: new Map([['x-api-key', TEST_VALID_KEY]]),
+        body: {
+          nome: 'Marcos Vinicius',
+          empresa: 'TransLog Brasil',
+          email: 'marcos@translog.com.br',
+          estagio_do_lead: 'qualificado',
+        },
+      }
+      const resDup = handleCreateLeadRequest(reqDup, secrets, dbState)
+      assert.strictEqual(resDup.status, 200, `Idempotência em ${route} deve retornar 200`)
+      assert.strictEqual(resDup.body.ok, true)
+      assert.strictEqual(resDup.body.data.duplicado, true)
+      assert.strictEqual(resDup.body.data.lead_id, res.body.data.lead_id)
+      assert.strictEqual(dbState.leads.length, 1, 'Total de leads deve permanecer 1')
+      assert.strictEqual(dbState.tool_logs.length, 2)
+      assert.strictEqual(dbState.tool_logs[1].resultado, 'sucesso')
+      assert.strictEqual(dbState.tool_logs[1].http_status, 200)
+
+      // 9.3 Autenticação idêntica (401 sem chave)
+      const reqUnauth: RequestMock = {
+        header: new Map(),
+        body: { nome: 'Teste', empresa: 'Empresa', email: 'teste@empresa.com' },
+      }
+      const resUnauth = handleCreateLeadRequest(reqUnauth, secrets, dbState)
+      assert.strictEqual(resUnauth.status, 401, `Autenticação em ${route} deve retornar 401`)
+      assert.strictEqual(resUnauth.body.ok, false)
+      assert.strictEqual(resUnauth.body.error.code, 'UNAUTHORIZED')
+
+      // 9.4 Validação idêntica (400 dados inválidos)
+      const reqInvalid: RequestMock = {
+        header: new Map([['x-api-key', TEST_VALID_KEY]]),
+        body: { nome: '', empresa: '', email: 'invalido' },
+      }
+      const resInvalid = handleCreateLeadRequest(reqInvalid, secrets, dbState)
+      assert.strictEqual(resInvalid.status, 400, `Validação em ${route} deve retornar 400`)
+      assert.strictEqual(resInvalid.body.ok, false)
+      assert.strictEqual(resInvalid.body.error.code, 'VALIDATION_ERROR')
+      assert.ok(Array.isArray(resInvalid.body.error.details))
+    }
   })
 })
