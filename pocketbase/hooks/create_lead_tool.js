@@ -29,7 +29,7 @@
     const infra = {
       // 1.1 Audit Logger Unificado (elimina duplicação entre sucesso e erro; LGPD compliant)
       auditLog: (data) => {
-        const durationMs = Date.now() - startTime
+        const duracao_ms = Math.max(1, Date.now() - startTime)
         try {
           const logsCol = $app.findCollectionByNameOrId('tool_logs')
           const logRecord = new Record(logsCol)
@@ -37,7 +37,7 @@
           logRecord.set('resultado', data.resultado) // 'sucesso' | 'erro'
           logRecord.set('error_code', data.error_code || '')
           logRecord.set('request_id', requestId)
-          logRecord.set('duracao_ms', durationMs)
+          logRecord.set('duracao_ms', duracao_ms)
           logRecord.set('http_status', data.http_status)
           $app.save(logRecord)
         } catch (logErr) {
