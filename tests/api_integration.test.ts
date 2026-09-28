@@ -46,14 +46,14 @@ function handleCreateLeadRequest(
     error_code?: string
     http_status: number
   }) => {
-    const durationMs = Date.now() - startTime
+    const duracao_ms = Math.max(1, Date.now() - startTime)
     const logDoc = {
       id: 'log_' + Math.random().toString(36).substring(2, 9),
       ferramenta: data.ferramenta || 'create_lead',
       resultado: data.resultado,
       error_code: data.error_code || '',
       request_id: requestId,
-      duracao_ms: durationMs,
+      duracao_ms: duracao_ms,
       http_status: data.http_status,
       created: new Date().toISOString(),
       updated: new Date().toISOString(),
@@ -487,6 +487,7 @@ describe('Integration Layer - Testes de API e Requisitos de Segurança', () => {
     assert.ok('http_status' in logRecord)
     assert.strictEqual(typeof logRecord.duracao_ms, 'number')
     assert.strictEqual(typeof logRecord.http_status, 'number')
+    assert.ok(logRecord.duracao_ms >= 1, 'duracao_ms deve ser no mínimo 1')
   })
 
   it('9. Dual-path: O mesmo handler responde identicamente nos dois caminhos (/api/backend/v1/tools/create_lead e /backend/v1/tools/create_lead)', () => {
