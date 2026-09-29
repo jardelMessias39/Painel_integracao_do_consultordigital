@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-28T20:28:20.707Z",
+  "generatedAt": "2026-09-28T20:41:27.005Z",
   "collections": [
     {
       "name": "users",
@@ -29,14 +29,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
@@ -114,7 +119,12 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["novo", "qualificado", "proposta", "descartado"]
+          "selectValues": [
+            "novo",
+            "qualificado",
+            "proposta",
+            "descartado"
+          ]
         },
         {
           "name": "proximo_passo",
@@ -133,14 +143,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
@@ -171,7 +186,10 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["sucesso", "erro"]
+          "selectValues": [
+            "sucesso",
+            "erro"
+          ]
         },
         {
           "name": "error_code",
@@ -202,14 +220,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
