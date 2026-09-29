@@ -22,10 +22,10 @@ export const V1_CONVENTIONS = {
 export const TOOL_CONTRACT_METADATA = {
   title: 'Tool Contract',
   subtitle: 'Consultor Digital × Integration Layer',
-  tool: 'create_lead — V1',
-  status: 'Contrato comportamental consolidado',
+  tool: 'Capabilities: create_lead (V1) & schedule_meeting (V2)',
+  status: 'Contrato comportamental e operacional consolidado',
   objective:
-    'definir quando e por que o Consultor Digital deve utilizar a capacidade create_lead, quais informações deve produzir e como deve se comportar diante de diferentes tipos de visitantes.',
+    'definir quando e por que o Consultor Digital deve utilizar as capacidades create_lead e schedule_meeting, quais informações deve produzir e como deve se comportar diante de diferentes tipos de visitantes e intenções.',
 }
 
 export const TOOL_CONTRACT_SECTIONS: ToolContractSection[] = [
@@ -450,6 +450,49 @@ Domain   Persistence
    └────┬────┘
         ▼
     PocketBase`,
+      },
+    ],
+  },
+  {
+    id: 'sec-33',
+    number: 33,
+    title: 'Capability V2: schedule_meeting (Solicitação Interna de Reunião)',
+    badge: 'V2',
+    content: `A capability schedule_meeting permite que o Consultor Digital, quando houver contexto suficiente e intenção clara do usuário, solicite o agendamento de uma reunião.
+
+Diretrizes comportamentais e operacionais:
+• Não integra calendário externo (sem Google Calendar, sem e-mail, sem WhatsApp, sem Obsidian nesta etapa).
+• Persiste uma solicitação interna com status inicial "pendente" na coleção meetings, para confirmação manual do consultor.
+• Idempotência: chave composta por email + data_hora. Mesmo e-mail com mesma data e hora proposta retorna HTTP 200 com duplicado: true, sem duplicar o registro.
+• Uma mesma pessoa pode solicitar reuniões em datas e horários distintos (nova solicitação é gerada).
+• data_hora DEVE ser uma data/horário futuro no padrão ISO 8601 com timezone explícito (Timezone operacional: America/Sao_Paulo).`,
+    codeBlocks: [
+      {
+        language: 'json',
+        caption: 'Contrato de Entrada (POST /api/backend/v1/tools/schedule_meeting)',
+        code: `{
+  "nome": "string (obrigatório, máx 200)",
+  "empresa": "string (obrigatório, máx 200, convenção 'Pessoa física' permitida)",
+  "email": "string (obrigatório, formato email válido)",
+  "telefone": "string (obrigatório, máx 30)",
+  "data_hora": "string (ISO 8601 com timezone, obrigatório, futura)",
+  "assunto": "string (obrigatório, resumo da pauta, máx 500)",
+  "observacoes": "string (opcional, máx 3000)"
+}`,
+      },
+      {
+        language: 'json',
+        caption: 'Resposta de Sucesso (HTTP 201 Created / HTTP 200 OK Duplicado)',
+        code: `{
+  "ok": true,
+  "data": {
+    "meeting_id": "string",
+    "status": "pendente",
+    "data_hora": "2026-10-15T14:00:00.000Z",
+    "created_at": "string",
+    "duplicado": false
+  }
+}`,
       },
     ],
   },

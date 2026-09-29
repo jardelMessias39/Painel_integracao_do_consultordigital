@@ -255,6 +255,192 @@ export const createLeadToolCapability = {
   },
 }
 
+export const scheduleMeetingDomainService = {
+  validateAndSanitize: (input: any) => {
+    const issues: Array<{ field: string; message: string }> = []
+    const data = input && typeof input === 'object' ? input : {}
+
+    // nome (string, obrigatório, máx 200)
+    if (typeof data.nome !== 'string' || !data.nome.trim()) {
+      issues.push({
+        field: 'nome',
+        message: "O campo 'nome' é obrigatório e deve ter no máximo 200 caracteres.",
+      })
+    } else if (data.nome.trim().length > 200) {
+      issues.push({ field: 'nome', message: "O campo 'nome' não pode exceder 200 caracteres." })
+    }
+
+    // empresa (string, obrigatório, máx 200)
+    if (typeof data.empresa !== 'string' || !data.empresa.trim()) {
+      issues.push({
+        field: 'empresa',
+        message: "O campo 'empresa' é obrigatório e deve ter no máximo 200 caracteres.",
+      })
+    } else if (data.empresa.trim().length > 200) {
+      issues.push({
+        field: 'empresa',
+        message: "O campo 'empresa' não pode exceder 200 caracteres.",
+      })
+    }
+
+    // email (string, obrigatório, email válido, máx 200)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (typeof data.email !== 'string' || !data.email.trim()) {
+      issues.push({
+        field: 'email',
+        message: "O campo 'email' é obrigatório e deve ser um endereço de e-mail válido.",
+      })
+    } else if (data.email.trim().length > 200) {
+      issues.push({
+        field: 'email',
+        message: "O campo 'email' não pode exceder 200 caracteres.",
+      })
+    } else if (!emailRegex.test(data.email.trim())) {
+      issues.push({
+        field: 'email',
+        message: "O campo 'email' informado não possui um formato válido de e-mail.",
+      })
+    }
+
+    // telefone (string, obrigatório, máx 30)
+    if (typeof data.telefone !== 'string' || !data.telefone.trim()) {
+      issues.push({
+        field: 'telefone',
+        message: "O campo 'telefone' é obrigatório e deve ter no máximo 30 caracteres.",
+      })
+    } else if (data.telefone.trim().length > 30) {
+      issues.push({
+        field: 'telefone',
+        message: "O campo 'telefone' não pode exceder 30 caracteres.",
+      })
+    }
+
+    // data_hora (string ISO com timezone, futura)
+    let parsedDate: Date | null = null
+    if (typeof data.data_hora !== 'string' || !data.data_hora.trim()) {
+      issues.push({
+        field: 'data_hora',
+        message:
+          "O campo 'data_hora' é obrigatório e deve estar no formato ISO 8601 com fuso horário.",
+      })
+    } else {
+      const rawDateStr = data.data_hora.trim()
+      const hasTimezone = /(Z|[+-]\d{2}:?\d{2})$/i.test(rawDateStr)
+      const timestamp = Date.parse(rawDateStr)
+
+      if (isNaN(timestamp)) {
+        issues.push({
+          field: 'data_hora',
+          message: "O campo 'data_hora' possui formato de data/hora inválido.",
+        })
+      } else if (!hasTimezone) {
+        issues.push({
+          field: 'data_hora',
+          message:
+            "O campo 'data_hora' deve incluir indicação explícita de fuso horário (ex: '2026-10-15T14:00:00-03:00' ou sufixo Z). Timezone operacional: America/Sao_Paulo (-03:00).",
+        })
+      } else if (timestamp <= Date.now()) {
+        issues.push({
+          field: 'data_hora',
+          message:
+            "A 'data_hora' informada deve ser uma data e horário futuro para agendamento.",
+        })
+      } else {
+        parsedDate = new Date(timestamp)
+      }
+    }
+
+    // assunto (string, obrigatório, máx 500)
+    if (typeof data.assunto !== 'string' || !data.assunto.trim()) {
+      issues.push({
+        field: 'assunto',
+        message:
+          "O campo 'assunto' é obrigatório e deve conter um resumo da pauta da reunião.",
+      })
+    } else if (data.assunto.trim().length > 500) {
+      issues.push({
+        field: 'assunto',
+        message: "O campo 'assunto' não pode exceder 500 caracteres.",
+      })
+    }
+
+    // observacoes (string, opcional, máx 3000)
+    if (
+      data.observacoes !== undefined &&
+      data.observacoes !== null &&
+      typeof data.observacoes !== 'string'
+    ) {
+      issues.push({
+        field: 'observacoes',
+        message: "O campo 'observacoes' deve ser texto.",
+      })
+    } else if (typeof data.observacoes === 'string' && data.observacoes.length > 3000) {
+      issues.push({
+        field: 'observacoes',
+        message: "O campo 'observacoes' não pode exceder 3000 caracteres.",
+      })
+    }
+
+    if (issues.length > 0) {
+      return { valid: false, issues: issues }
+    }
+
+    return {
+      valid: true,
+      sanitized: {
+        nome: String(data.nome || '').trim(),
+        empresa: String(data.empresa || '').trim(),
+        email: String(data.email || '').toLowerCase().trim(),
+        telefone: String(data.telefone || '').trim(),
+        data_hora: parsedDate!.toISOString(),
+        assunto: String(data.assunto || '').trim(),
+        observacoes: data.observacoes ? String(data.observacoes).trim() : '',
+      },
+    }
+  },
+
+  execute: (sanitizedData: any, repository: any, reqId: string) => {
+    // 1. Idempotência: verificar por email + data_hora
+    const existing = repository.findMeetingByEmailDataHora(
+      sanitizedData.email,
+      sanitizedData.data_hora,
+    )
+
+    if (existing) {
+      return {
+        status: 200,
+        duplicado: true,
+        meeting_id: existing.id,
+        meeting_status: existing.status,
+        data_hora: existing.data_hora,
+        created_at: existing.created,
+      }
+    }
+
+    // 2. Novo agendamento
+    const createdRecord = repository.insertMeeting(sanitizedData, reqId)
+    return {
+      status: 201,
+      duplicado: false,
+      meeting_id: createdRecord.id,
+      meeting_status: createdRecord.status,
+      data_hora: createdRecord.data_hora,
+      created_at: createdRecord.created,
+    }
+  },
+}
+
+export const scheduleMeetingToolCapability = {
+  nome: 'schedule_meeting',
+  descricao: 'Registra uma solicitação interna de reunião com o consultor com status inicial pendente',
+  escopo: 'meetings:write',
+  validate: (input: any) => scheduleMeetingDomainService.validateAndSanitize(input),
+  run: (sanitizedData: any, context: { repository: any; requestId?: string }) => {
+    const rId = (context && context.requestId) || 'test_req_id'
+    return scheduleMeetingDomainService.execute(sanitizedData, context.repository, rId)
+  },
+}
+
 describe('Capability create_lead - Testes Diretos de Domínio (Sem HTTP)', () => {
   it('1. Deve validar e higienizar entrada com sucesso e aplicar defaults (estagio=novo)', () => {
     const input = {
@@ -424,5 +610,253 @@ describe('Capability create_lead - Testes Diretos de Domínio (Sem HTTP)', () =>
       1,
       'Não deve criar uma segunda linha para mesma chave email+empresa',
     )
+  })
+})
+
+describe('Capability schedule_meeting - Testes Diretos de Domínio (Sem HTTP)', () => {
+  const FUTURE_ISO_DATE = new Date(Date.now() + 86400000 * 5).toISOString() // 5 dias no futuro
+
+  it('1. Deve validar e higienizar entrada com sucesso para reunião futura', () => {
+    const input = {
+      nome: '  Carlos Drummond  ',
+      empresa: '  Editora Moderna  ',
+      email: '  CARLOS@editora.com  ',
+      telefone: '  (21) 98765-4321  ',
+      data_hora: FUTURE_ISO_DATE,
+      assunto: '  Alinhamento de automação de pedidos  ',
+      observacoes: '  Preferência por chamada de vídeo  ',
+    }
+
+    const valResult = scheduleMeetingToolCapability.validate(input)
+    assert.strictEqual(valResult.valid, true)
+    assert.strictEqual(valResult.sanitized.nome, 'Carlos Drummond')
+    assert.strictEqual(valResult.sanitized.empresa, 'Editora Moderna')
+    assert.strictEqual(valResult.sanitized.email, 'carlos@editora.com')
+    assert.strictEqual(valResult.sanitized.telefone, '(21) 98765-4321')
+    assert.strictEqual(valResult.sanitized.assunto, 'Alinhamento de automação de pedidos')
+    assert.strictEqual(valResult.sanitized.observacoes, 'Preferência por chamada de vídeo')
+  })
+
+  it('2. Deve rejeitar data_hora no passado com erro explicativo', () => {
+    const pastDate = new Date(Date.now() - 3600000).toISOString()
+    const input = {
+      nome: 'Carlos',
+      empresa: 'Editora',
+      email: 'carlos@editora.com',
+      telefone: '12345678',
+      data_hora: pastDate,
+      assunto: 'Reunião retroativa',
+    }
+
+    const valResult = scheduleMeetingToolCapability.validate(input)
+    assert.strictEqual(valResult.valid, false)
+    const issue = valResult.issues.find((i: any) => i.field === 'data_hora')
+    assert.ok(issue)
+    assert.ok(issue.message.includes('futuro'))
+  })
+
+  it('3. Deve rejeitar data_hora sem indicação explícita de timezone', () => {
+    const dateWithoutTz = '2026-12-01T15:00:00'
+    const input = {
+      nome: 'Carlos',
+      empresa: 'Editora',
+      email: 'carlos@editora.com',
+      telefone: '12345678',
+      data_hora: dateWithoutTz,
+      assunto: 'Reunião sem timezone',
+    }
+
+    const valResult = scheduleMeetingToolCapability.validate(input)
+    assert.strictEqual(valResult.valid, false)
+    const issue = valResult.issues.find((i: any) => i.field === 'data_hora')
+    assert.ok(issue)
+    assert.ok(issue.message.includes('fuso horário'))
+  })
+
+  it('4. Deve validar campos obrigatórios (nome, empresa, email, telefone, data_hora, assunto)', () => {
+    const requiredCheck = scheduleMeetingToolCapability.validate({})
+    assert.strictEqual(requiredCheck.valid, false)
+    const fields = requiredCheck.issues.map((i: any) => i.field)
+    assert.ok(fields.includes('nome'))
+    assert.ok(fields.includes('empresa'))
+    assert.ok(fields.includes('email'))
+    assert.ok(fields.includes('telefone'))
+    assert.ok(fields.includes('data_hora'))
+    assert.ok(fields.includes('assunto'))
+  })
+
+  it('5. run(data, {repository}): deve criar solicitação com status inicial pendente (HTTP 201, duplicado: false)', () => {
+    const inMemoryMeetings: any[] = []
+    const mockRepo = {
+      findMeetingByEmailDataHora: (email: string, dataHora: string) => {
+        return (
+          inMemoryMeetings.find(
+            (m) =>
+              m.email.toLowerCase() === email.toLowerCase() &&
+              m.data_hora === dataHora,
+          ) || null
+        )
+      },
+      insertMeeting: (data: any, reqId: string) => {
+        const record = {
+          id: 'meet_' + Math.random().toString(36).substring(2, 9),
+          ...data,
+          status: 'pendente',
+          request_id: reqId,
+          created: new Date().toISOString(),
+        }
+        inMemoryMeetings.push(record)
+        return record
+      },
+    }
+
+    const inputData = {
+      nome: 'Beatriz Silva',
+      empresa: 'Consultoria Financeira',
+      email: 'beatriz@financeira.com',
+      telefone: '(11) 97777-6666',
+      data_hora: FUTURE_ISO_DATE,
+      assunto: 'Diagnóstico de fluxos operacionais',
+    }
+
+    const val = scheduleMeetingToolCapability.validate(inputData)
+    assert.strictEqual(val.valid, true)
+
+    const result = scheduleMeetingToolCapability.run(val.sanitized, {
+      repository: mockRepo,
+      requestId: 'req_meet_001',
+    })
+
+    assert.strictEqual(result.status, 201)
+    assert.strictEqual(result.duplicado, false)
+    assert.strictEqual(result.meeting_status, 'pendente')
+    assert.ok(result.meeting_id)
+    assert.strictEqual(inMemoryMeetings.length, 1)
+    assert.strictEqual(inMemoryMeetings[0].id, result.meeting_id)
+    assert.strictEqual(inMemoryMeetings[0].status, 'pendente')
+  })
+
+  it('6. Idempotência: mesmo email + mesma data_hora retorna 200 com duplicado: true', () => {
+    const existingCreated = '2026-09-26T12:00:00.000Z'
+    const inMemoryMeetings: any[] = [
+      {
+        id: 'meet_existing_123',
+        nome: 'Beatriz Silva',
+        empresa: 'Consultoria Financeira',
+        email: 'beatriz@financeira.com',
+        telefone: '(11) 97777-6666',
+        data_hora: FUTURE_ISO_DATE,
+        assunto: 'Diagnóstico anterior',
+        status: 'pendente',
+        created: existingCreated,
+      },
+    ]
+
+    const mockRepo = {
+      findMeetingByEmailDataHora: (email: string, dataHora: string) => {
+        return (
+          inMemoryMeetings.find(
+            (m) =>
+              m.email.toLowerCase() === email.toLowerCase() &&
+              m.data_hora === dataHora,
+          ) || null
+        )
+      },
+      insertMeeting: (data: any, reqId: string) => {
+        const record = {
+          id: 'meet_should_not_create',
+          ...data,
+          status: 'pendente',
+          request_id: reqId,
+          created: new Date().toISOString(),
+        }
+        inMemoryMeetings.push(record)
+        return record
+      },
+    }
+
+    const inputData = {
+      nome: 'Beatriz Silva Nova Tentativa',
+      empresa: 'Consultoria Financeira',
+      email: 'beatriz@financeira.com',
+      telefone: '(11) 97777-6666',
+      data_hora: FUTURE_ISO_DATE,
+      assunto: 'Tentativa duplicada no mesmo horário',
+    }
+
+    const val = scheduleMeetingToolCapability.validate(inputData)
+    assert.strictEqual(val.valid, true)
+
+    const result = scheduleMeetingToolCapability.run(val.sanitized, {
+      repository: mockRepo,
+      requestId: 'req_meet_002',
+    })
+
+    assert.strictEqual(result.status, 200)
+    assert.strictEqual(result.duplicado, true)
+    assert.strictEqual(result.meeting_id, 'meet_existing_123')
+    assert.strictEqual(inMemoryMeetings.length, 1, 'Não deve criar segundo registro para mesmo email+data_hora')
+  })
+
+  it('7. Mesma pessoa com data_hora DIFERENTE gera nova solicitação (status 201)', () => {
+    const inMemoryMeetings: any[] = [
+      {
+        id: 'meet_existing_123',
+        nome: 'Beatriz Silva',
+        empresa: 'Consultoria Financeira',
+        email: 'beatriz@financeira.com',
+        telefone: '(11) 97777-6666',
+        data_hora: FUTURE_ISO_DATE,
+        assunto: 'Diagnóstico anterior',
+        status: 'pendente',
+        created: '2026-09-26T12:00:00.000Z',
+      },
+    ]
+
+    const mockRepo = {
+      findMeetingByEmailDataHora: (email: string, dataHora: string) => {
+        return (
+          inMemoryMeetings.find(
+            (m) =>
+              m.email.toLowerCase() === email.toLowerCase() &&
+              m.data_hora === dataHora,
+          ) || null
+        )
+      },
+      insertMeeting: (data: any, reqId: string) => {
+        const record = {
+          id: 'meet_new_456',
+          ...data,
+          status: 'pendente',
+          request_id: reqId,
+          created: new Date().toISOString(),
+        }
+        inMemoryMeetings.push(record)
+        return record
+      },
+    }
+
+    const differentFutureDate = new Date(Date.now() + 86400000 * 10).toISOString()
+    const inputData = {
+      nome: 'Beatriz Silva',
+      empresa: 'Consultoria Financeira',
+      email: 'beatriz@financeira.com',
+      telefone: '(11) 97777-6666',
+      data_hora: differentFutureDate,
+      assunto: 'Segunda reunião de acompanhamento',
+    }
+
+    const val = scheduleMeetingToolCapability.validate(inputData)
+    assert.strictEqual(val.valid, true)
+
+    const result = scheduleMeetingToolCapability.run(val.sanitized, {
+      repository: mockRepo,
+      requestId: 'req_meet_003',
+    })
+
+    assert.strictEqual(result.status, 201)
+    assert.strictEqual(result.duplicado, false)
+    assert.strictEqual(result.meeting_id, 'meet_new_456')
+    assert.strictEqual(inMemoryMeetings.length, 2, 'Deve permitir múltiplos agendamentos em horários distintos')
   })
 })

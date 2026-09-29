@@ -23,8 +23,10 @@ export default function Documentacao() {
 
   const publicBaseUrl = INTEGRATION_CONFIG.publicDomain
   const publicEndpoint = `${publicBaseUrl}${INTEGRATION_CONFIG.publicEndpointPath}`
+  const publicScheduleMeetingEndpoint = `${publicBaseUrl}${INTEGRATION_CONFIG.publicScheduleMeetingPath}`
   const internalBaseUrl = INTEGRATION_CONFIG.backendUrl
   const internalEndpoint = `${internalBaseUrl}${INTEGRATION_CONFIG.internalEndpointPath}`
+  const internalScheduleMeetingEndpoint = `${internalBaseUrl}${INTEGRATION_CONFIG.internalScheduleMeetingPath}`
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text)
@@ -136,61 +138,66 @@ async function registrarLeadConsultor(leadData) {
   return result.data;
 }`
 
-  const consultorInstructionsBlock = `INTEGRAÇÃO COM A CAMADA DE LEADS — CONSULTOR DIGITAL (v1)
+  // Exemplo de payload schedule_meeting (V2)
+  const sampleScheduleMeetingPayload = JSON.stringify(
+    {
+      nome: 'Carlos Eduardo Silva',
+      empresa: 'LogiTech Transportes',
+      email: 'carlos.silva@logitech.com.br',
+      telefone: '(11) 98765-4321',
+      data_hora: '2026-10-15T14:30:00-03:00',
+      assunto: 'Apresentação da proposta do Consultor Digital e alinhamento de escopo',
+      observacoes: 'Preferência por reunião via Google Meet; disponibilidade no período da tarde.',
+    },
+    null,
+    2,
+  )
+
+  const sampleScheduleMeetingSuccess = JSON.stringify(
+    {
+      ok: true,
+      data: {
+        meeting_id: 'm1hsdzu85woiyu7',
+        status: 'pendente',
+        data_hora: '2026-10-15T17:30:00.000Z',
+        created_at: '2026-09-26 14:10:00.000Z',
+        duplicado: false,
+      },
+    },
+    null,
+    2,
+  )
+
+  const consultorInstructionsBlock = `INTEGRAÇÃO COM A CAMADA DE FERRAMENTAS — CONSULTOR DIGITAL (v2)
 
 Esta camada foi construída exclusivamente para receber chamadas SERVER-TO-SERVER vindas do backend do seu chatbot "Consultor Digital". NUNCA coloque a chave de API no frontend ou no bundle do navegador!
 
-1. ENDPOINT PÚBLICO DE PRODUÇÃO (POST):
-   ${publicEndpoint}
+1. ENDPOINTS PÚBLICOS DE PRODUÇÃO (POST):
+   - create_lead:      ${publicEndpoint}
+   - schedule_meeting: ${publicScheduleMeetingEndpoint}
 
    * Nota de infraestrutura: No domínio público do Skip Cloud (*.goskip.app), apenas o prefixo /api/
-     é roteado ao backend PocketBase. Portanto a URL externa funcional é /api/backend/v1/tools/create_lead.
-     O caminho /backend/v1/tools/create_lead permanece registrado para acesso interno/direto.
+     é roteado ao backend PocketBase.
 
 2. HEADERS OBRIGATÓRIOS:
    - Content-Type: application/json
-   - X-API-Key: <SUA_CONSULTOR_API_KEY>
+   - X-API-Key: <SUA_CONSULTOR_API_KEY> (mesma chave server-to-server)
 
-3. PAYLOAD JSON:
-{
-  "nome": "Nome Completo (obrigatório, máx 200)",
-  "empresa": "Nome da Empresa (obrigatório, máx 200)",
-  "email": "lead@empresa.com.br (obrigatório, válido)",
-  "telefone": "(11) 99999-9999 (opcional, máx 30)",
-  "necessidade_identificada": "Contexto capturado no chat (opcional, máx 2000)",
-  "problema_relatado": "Dores relatadas pelo cliente (opcional, máx 2000)",
-  "requisitos": "Requisitos de negócio/técnicos (opcional, máx 2000)",
-  "solucao_sugerida": "Solução proposta pelo Consultor (opcional, máx 2000)",
-  "resumo_conversa": "Transcrição resumida (opcional, máx 5000)",
-  "estagio_do_lead": "novo" | "qualificado" | "proposta" | "descartado" (default: "novo"),
-  "proximo_passo": "Ação recomendada (opcional, máx 500)"
-}
+3. CAPABILITY 1: create_lead (V1 - baseline)
+   Chave de idempotência: email + empresa.
 
-4. ENVELOPE DE RESPOSTA ÚNICO:
-- HTTP 201 (Novo lead criado):
-  {
-    "ok": true,
-    "data": { "lead_id": "...", "estagio_do_lead": "...", "created_at": "...", "duplicado": false }
-  }
+4. CAPABILITY 2: schedule_meeting (V2)
+   Chave de idempotência: email + data_hora.
+   data_hora DEVE ser futura em formato ISO 8601 com timezone (America/Sao_Paulo).
+   Status inicial persistido internamente: "pendente".
 
-- HTTP 200 (Lead existente com mesmo email + empresa):
-  {
-    "ok": true,
-    "data": { "lead_id": "...", "estagio_do_lead": "...", "created_at": "...", "duplicado": true }
-  }
+5. ENVELOPE DE RESPOSTA ÚNICO (idêntico nas duas capabilities):
+   - HTTP 201: { "ok": true, "data": { ..., "duplicado": false } }
+   - HTTP 200: { "ok": true, "data": { ..., "duplicado": true } }
+   - HTTP 400/401/429/500: { "ok": false, "error": { "code": "...", "message": "...", "details": [] } }
 
-- Em caso de erro (HTTP 400, 401, 429, 500):
-  {
-    "ok": false,
-    "error": {
-      "code": "VALIDATION_ERROR" | "UNAUTHORIZED" | "RATE_LIMITED" | "INTERNAL_ERROR",
-      "message": "Mensagem descritiva",
-      "details": [ { "field": "...", "message": "..." } ]
-    }
-  }
-
-5. RATE LIMIT:
-   Máximo de 120 requisições por minuto por chave. Resposta 429 RATE_LIMITED se excedido.`
+6. RATE LIMIT:
+   Máximo de 120 requisições por minuto compartilhado por chave.`
 
   const [activeMainTab, setActiveMainTab] = useState<'tecnico' | 'comportamental'>('comportamental')
 
@@ -346,17 +353,18 @@ Esta camada foi construída exclusivamente para receber chamadas SERVER-TO-SERVE
                 <div>
                   <div className="flex items-center gap-2">
                     <Badge className="bg-teal-100 text-teal-800 border-teal-200 text-xs">
-                      Contrato da API v1
+                      Contrato da API v2
                     </Badge>
                     <span className="text-xs text-slate-500 font-mono">
-                      POST {INTEGRATION_CONFIG.publicEndpointPath}
+                      create_lead &amp; schedule_meeting
                     </span>
                   </div>
                   <CardTitle className="text-lg font-bold text-slate-900 mt-1">
-                    Especificação da Ferramenta create_lead
+                    Especificação das Ferramentas (create_lead &amp; schedule_meeting)
                   </CardTitle>
                   <CardDescription className="text-xs text-slate-500">
-                    Guia de implementação para o backend do chatbot conectar à Camada de Integração
+                    Guia de implementação para o backend do chatbot conectar às capabilities da
+                    Camada de Integração
                   </CardDescription>
                 </div>
 
@@ -433,205 +441,285 @@ Esta camada foi construída exclusivamente para receber chamadas SERVER-TO-SERVE
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-semibold text-slate-900 flex items-center gap-2">
                   <Server className="h-4 w-4 text-blue-600" />
-                  Endpoint URL (Pública)
+                  Endpoints Públicos
                 </CardTitle>
                 <CardDescription className="text-xs text-slate-500">
-                  URL pública funcional no domínio Skip Cloud
+                  URLs funcionais no domínio público Skip Cloud
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
                 <div className="p-2 rounded-lg border border-teal-200 bg-teal-50/50 font-mono text-xs text-teal-950 break-all">
                   <span className="text-[10px] text-teal-700 block font-sans font-medium mb-0.5">
-                    URL Externa (Consultor Digital):
+                    create_lead (V1):
                   </span>
                   {publicEndpoint}
+                </div>
+                <div className="p-2 rounded-lg border border-teal-200 bg-teal-50/50 font-mono text-xs text-teal-950 break-all">
+                  <span className="text-[10px] text-teal-700 block font-sans font-medium mb-0.5">
+                    schedule_meeting (V2):
+                  </span>
+                  {publicScheduleMeetingEndpoint}
                 </div>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => copyToClipboard(publicEndpoint, 'URL Pública')}
+                  onClick={() =>
+                    copyToClipboard(publicScheduleMeetingEndpoint, 'URL schedule_meeting')
+                  }
                   className="w-full text-xs border-teal-200 text-teal-800 hover:bg-teal-50"
                 >
-                  {copiedSnippet === 'URL Pública' ? 'Copiado!' : 'Copiar URL Pública'}
+                  {copiedSnippet === 'URL schedule_meeting'
+                    ? 'Copiado!'
+                    : 'Copiar URL schedule_meeting'}
                 </Button>
-
-                <div className="pt-2 border-t border-slate-100">
-                  <span className="text-[10px] text-slate-500 block mb-1">
-                    Acesso direto / interno PocketBase:
-                  </span>
-                  <div className="p-1.5 rounded border border-slate-200 bg-slate-50 font-mono text-[11px] text-slate-600 break-all">
-                    {internalEndpoint}
-                  </div>
-                </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Tabela de Campos Validados pelo Zod */}
-          <Card className="border-slate-200 shadow-2xs bg-white">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold text-slate-900">
-                Esquema de Validação do Payload (Zod Schema)
-              </CardTitle>
-              <CardDescription className="text-xs text-slate-500">
-                Todos os campos são sanitizados e validados rigorosamente no servidor antes de
-                qualquer gravação
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50/80 font-medium text-slate-600 text-[11px]">
-                      <th className="py-2.5 px-3">Campo</th>
-                      <th className="py-2.5 px-3">Tipo</th>
-                      <th className="py-2.5 px-3">Obrigatoriedade</th>
-                      <th className="py-2.5 px-3">Regras / Valores Permitidos</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-sans">
-                    <tr>
-                      <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">nome</td>
-                      <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
-                      <td className="py-2.5 px-3">
-                        <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px]">
-                          Obrigatório
-                        </Badge>
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600">Máximo de 200 caracteres</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
-                        empresa
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
-                      <td className="py-2.5 px-3">
-                        <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px]">
-                          Obrigatório
-                        </Badge>
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600">
-                        Máximo de 200 caracteres (usado na chave de idempotência)
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">email</td>
-                      <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
-                      <td className="py-2.5 px-3">
-                        <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px]">
-                          Obrigatório
-                        </Badge>
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600">
-                        Formato de e-mail válido RFC, máx 200 caracteres
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
-                        telefone
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
-                      <td className="py-2.5 px-3">
-                        <Badge variant="outline" className="text-slate-600 text-[10px]">
-                          Opcional
-                        </Badge>
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600">Máximo de 30 caracteres</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
-                        necessidade_identificada
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
-                      <td className="py-2.5 px-3">
-                        <Badge variant="outline" className="text-slate-600 text-[10px]">
-                          Opcional
-                        </Badge>
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600">Máximo de 2000 caracteres</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
-                        problema_relatado
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
-                      <td className="py-2.5 px-3">
-                        <Badge variant="outline" className="text-slate-600 text-[10px]">
-                          Opcional
-                        </Badge>
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600">Máximo de 2000 caracteres</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
-                        requisitos
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
-                      <td className="py-2.5 px-3">
-                        <Badge variant="outline" className="text-slate-600 text-[10px]">
-                          Opcional
-                        </Badge>
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600">Máximo de 2000 caracteres</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
-                        solucao_sugerida
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
-                      <td className="py-2.5 px-3">
-                        <Badge variant="outline" className="text-slate-600 text-[10px]">
-                          Opcional
-                        </Badge>
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600">Máximo de 2000 caracteres</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
-                        resumo_conversa
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
-                      <td className="py-2.5 px-3">
-                        <Badge variant="outline" className="text-slate-600 text-[10px]">
-                          Opcional
-                        </Badge>
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600">Máximo de 5000 caracteres</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
-                        estagio_do_lead
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-500">enum fechado</td>
-                      <td className="py-2.5 px-3">
-                        <Badge
-                          variant="outline"
-                          className="text-teal-700 bg-teal-50 border-teal-200 text-[10px]"
-                        >
-                          Default "novo"
-                        </Badge>
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-800 font-mono text-[11px]">
-                        "novo" | "qualificado" | "proposta" | "descartado"
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
-                        proximo_passo
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
-                      <td className="py-2.5 px-3">
-                        <Badge variant="outline" className="text-slate-600 text-[10px]">
-                          Opcional
-                        </Badge>
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600">Máximo de 500 caracteres</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
+          {/* Tabela de Campos das Capabilities */}
+          <div className="space-y-4">
+            <Card className="border-slate-200 shadow-2xs bg-white">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-base font-semibold text-slate-900">
+                      Esquema: create_lead (V1)
+                    </CardTitle>
+                    <CardDescription className="text-xs text-slate-500">
+                      Chave de idempotência: email + empresa | Persistência: coleção leads
+                    </CardDescription>
+                  </div>
+                  <Badge variant="outline" className="text-xs">
+                    Baseline Protegido
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50/80 font-medium text-slate-600 text-[11px]">
+                        <th className="py-2.5 px-3">Campo</th>
+                        <th className="py-2.5 px-3">Tipo</th>
+                        <th className="py-2.5 px-3">Obrigatoriedade</th>
+                        <th className="py-2.5 px-3">Regras / Valores Permitidos</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-sans">
+                      <tr>
+                        <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">nome</td>
+                        <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
+                        <td className="py-2.5 px-3">
+                          <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px]">
+                            Obrigatório
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600">Máximo de 200 caracteres</td>
+                      </tr>
+                      <tr>
+                        <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                          empresa
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
+                        <td className="py-2.5 px-3">
+                          <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px]">
+                            Obrigatório
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600">
+                          Máximo de 200 caracteres (usado na chave de idempotência)
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                          email
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
+                        <td className="py-2.5 px-3">
+                          <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px]">
+                            Obrigatório
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600">
+                          Formato de e-mail válido RFC, máx 200 caracteres
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                          telefone
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
+                        <td className="py-2.5 px-3">
+                          <Badge variant="outline" className="text-slate-600 text-[10px]">
+                            Opcional
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600">Máximo de 30 caracteres</td>
+                      </tr>
+                      <tr>
+                        <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                          necessidade_identificada
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
+                        <td className="py-2.5 px-3">
+                          <Badge variant="outline" className="text-slate-600 text-[10px]">
+                            Opcional
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600">Máximo de 2000 caracteres</td>
+                      </tr>
+                      <tr>
+                        <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                          estagio_do_lead
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-slate-500">enum fechado</td>
+                        <td className="py-2.5 px-3">
+                          <Badge
+                            variant="outline"
+                            className="text-teal-700 bg-teal-50 border-teal-200 text-[10px]"
+                          >
+                            Default "novo"
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-800 font-mono text-[11px]">
+                          "novo" | "qualificado" | "proposta" | "descartado"
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-teal-200 shadow-2xs bg-white">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-base font-semibold text-slate-900">
+                      Esquema: schedule_meeting (V2)
+                    </CardTitle>
+                    <CardDescription className="text-xs text-slate-500">
+                      Chave de idempotência: email + data_hora | Persistência: coleção meetings
+                      (status inicial: pendente)
+                    </CardDescription>
+                  </div>
+                  <Badge className="bg-teal-100 text-[#0F766E] border-teal-200 text-xs font-semibold">
+                    Nova Capability V2
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50/80 font-medium text-slate-600 text-[11px]">
+                        <th className="py-2.5 px-3">Campo</th>
+                        <th className="py-2.5 px-3">Tipo</th>
+                        <th className="py-2.5 px-3">Obrigatoriedade</th>
+                        <th className="py-2.5 px-3">Regras / Valores Permitidos</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-sans">
+                      <tr>
+                        <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">nome</td>
+                        <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
+                        <td className="py-2.5 px-3">
+                          <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px]">
+                            Obrigatório
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600">Máximo de 200 caracteres</td>
+                      </tr>
+                      <tr>
+                        <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                          empresa
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
+                        <td className="py-2.5 px-3">
+                          <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px]">
+                            Obrigatório
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600">
+                          Máximo 200 caracteres (convenção "Pessoa física" aceita)
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                          email
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
+                        <td className="py-2.5 px-3">
+                          <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px]">
+                            Obrigatório
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600">
+                          Formato de e-mail RFC válido, máx 200 (chave de idempotência)
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                          telefone
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
+                        <td className="py-2.5 px-3">
+                          <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px]">
+                            Obrigatório
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600">
+                          Telefone para contato, máx 30 caracteres
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                          data_hora
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-slate-500">string (ISO 8601)</td>
+                        <td className="py-2.5 px-3">
+                          <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px]">
+                            Obrigatório
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600">
+                          DEVE ser FUTURA com timezone explícito (chave de idempotência)
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                          assunto
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
+                        <td className="py-2.5 px-3">
+                          <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px]">
+                            Obrigatório
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600">
+                          Resumo da pauta proposta, máx 500 caracteres
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                          observacoes
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
+                        <td className="py-2.5 px-3">
+                          <Badge variant="outline" className="text-slate-600 text-[10px]">
+                            Opcional
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600">
+                          Notas adicionais ou preferências de canal, máx 3000 caracteres
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
           {/* Códigos de Erro Estáveis */}
           <Card className="border-slate-200 shadow-2xs bg-white">
@@ -753,7 +841,7 @@ Esta camada foi construída exclusivamente para receber chamadas SERVER-TO-SERVE
             </TabsContent>
 
             <TabsContent value="res_success">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Card className="border-slate-200 bg-white shadow-2xs">
                   <CardHeader className="py-3 px-4 border-b border-slate-100">
                     <span className="text-xs font-semibold text-emerald-700">
@@ -768,11 +856,22 @@ Esta camada foi construída exclusivamente para receber chamadas SERVER-TO-SERVE
                 <Card className="border-slate-200 bg-white shadow-2xs">
                   <CardHeader className="py-3 px-4 border-b border-slate-100">
                     <span className="text-xs font-semibold text-teal-700">
-                      HTTP 200 OK (Lead Existente / Idempotência)
+                      HTTP 200 OK (Idempotência Lead)
                     </span>
                   </CardHeader>
                   <CardContent className="p-4 font-mono text-xs overflow-x-auto text-slate-800 bg-slate-50 rounded-b-lg">
                     <pre>{sampleSuccessDuplicate}</pre>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-teal-200 bg-white shadow-2xs">
+                  <CardHeader className="py-3 px-4 border-b border-teal-100">
+                    <span className="text-xs font-semibold text-teal-800">
+                      HTTP 201 Created (schedule_meeting)
+                    </span>
+                  </CardHeader>
+                  <CardContent className="p-4 font-mono text-xs overflow-x-auto text-slate-800 bg-teal-50/40 rounded-b-lg">
+                    <pre>{sampleScheduleMeetingSuccess}</pre>
                   </CardContent>
                 </Card>
               </div>

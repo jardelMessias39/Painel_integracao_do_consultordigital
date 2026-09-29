@@ -30,6 +30,22 @@ export interface ToolLogRecord extends RecordModel {
   updated: string
 }
 
+export type StatusMeeting = 'pendente' | 'confirmada' | 'cancelada' | 'realizada'
+
+export interface MeetingRecord extends RecordModel {
+  nome: string
+  empresa: string
+  email: string
+  telefone: string
+  data_hora: string
+  assunto: string
+  observacoes?: string
+  status: StatusMeeting
+  request_id?: string
+  created: string
+  updated: string
+}
+
 export interface ToolDefinition {
   nome: string
   descricao: string
