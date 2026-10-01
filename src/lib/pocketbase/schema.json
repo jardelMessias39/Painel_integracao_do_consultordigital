@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-01T16:44:44.647Z",
+  "generatedAt": "2026-10-01T16:53:21.365Z",
   "collections": [
     {
       "name": "users",
@@ -29,19 +29,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -119,12 +114,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "novo",
-            "qualificado",
-            "proposta",
-            "descartado"
-          ]
+          "selectValues": ["novo", "qualificado", "proposta", "descartado"]
         },
         {
           "name": "proximo_passo",
@@ -143,19 +133,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -186,10 +171,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "sucesso",
-            "erro"
-          ]
+          "selectValues": ["sucesso", "erro"]
         },
         {
           "name": "error_code",
@@ -220,19 +202,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -300,12 +277,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "pendente",
-            "confirmada",
-            "cancelada",
-            "realizada"
-          ]
+          "selectValues": ["pendente", "confirmada", "cancelada", "realizada"]
         },
         {
           "name": "request_id",
@@ -318,26 +290,21 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
-        "CREATE INDEX idx_meetings_email_data_hora ON meetings (email, data_hora)",
         "CREATE INDEX idx_meetings_status ON meetings (status)",
         "CREATE INDEX idx_meetings_data_hora ON meetings (data_hora)",
-        "CREATE INDEX idx_meetings_created ON meetings (created DESC)"
+        "CREATE INDEX idx_meetings_created ON meetings (created DESC)",
+        "CREATE UNIQUE INDEX `idx_meetings_email_data_hora_unique` ON `meetings` (email, data_hora)"
       ]
     }
   ]
