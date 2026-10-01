@@ -794,9 +794,16 @@ function handleScheduleMeetingRequest(
     observacoes: rawBody.observacoes ? String(rawBody.observacoes).trim() : '',
   }
 
-  // 7. Idempotência por email + data_hora
+  // 7. Persistência e Idempotência com suporte ao formato de data do PocketBase e Concorrência
+  // O PocketBase armazena campos date como 'YYYY-MM-DD HH:MM:SS.SSSZ' (com espaço em vez de T)
+  const formatForPocketBaseDate = (iso: string) => iso.replace('T', ' ')
+  const pbDate = formatForPocketBaseDate(sanitized.data_hora)
+
+  // Encontra tanto no formato PB (' ') quanto no formato ISO ('T')
   const existing = dbState.meetings.find(
-    (m) => m.email === sanitized.email && m.data_hora === sanitized.data_hora,
+    (m) =>
+      m.email === sanitized.email &&
+      (m.data_hora === pbDate || m.data_hora === sanitized.data_hora),
   )
 
   if (existing) {
@@ -820,14 +827,54 @@ function handleScheduleMeetingRequest(
     }
   }
 
+  // Simulação de inserção no banco com proteção de UNIQUE constraint (email, data_hora)
+  // PocketBase armazena no formato com espaço
   const newMeeting = {
     id: 'meet_' + Math.random().toString(36).substring(2, 9),
     ...sanitized,
+    data_hora: pbDate, // Armazena como o PocketBase real armazena
     status: 'pendente',
     request_id: requestId,
-    created: new Date().toISOString(),
-    updated: new Date().toISOString(),
+    created: new Date().toISOString().replace('T', ' '),
+    updated: new Date().toISOString().replace('T', ' '),
   }
+
+  // Verifica se outra thread concorrente inseriu no mesmo instante
+  const isDuplicateKey = dbState.meetings.some(
+    (m) =>
+      m.email === newMeeting.email &&
+      (m.data_hora === pbDate || m.data_hora === sanitized.data_hora),
+  )
+
+  if (isDuplicateKey) {
+    // Trata race condition: erro de UNIQUE constraint recupera o registro vencedor
+    const winner = dbState.meetings.find(
+      (m) =>
+        m.email === newMeeting.email &&
+        (m.data_hora === pbDate || m.data_hora === sanitized.data_hora),
+    )!
+
+    auditLog({
+      ferramenta: 'schedule_meeting',
+      resultado: 'sucesso',
+      http_status: 200,
+    })
+
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        data: {
+          meeting_id: winner.id,
+          status: winner.status,
+          data_hora: winner.data_hora,
+          created_at: winner.created,
+          duplicado: true,
+        },
+      },
+    }
+  }
+
   dbState.meetings.push(newMeeting)
 
   auditLog({
@@ -1124,5 +1171,198 @@ describe('Capability schedule_meeting — Testes de Integração e Requisitos de
     assert.strictEqual(logStr.includes('estratégico'), false, 'Não deve conter assunto')
     assert.strictEqual(logStr.includes('detalhes internos'), false, 'Não deve conter observações')
     assert.strictEqual(logStr.includes(TEST_VALID_KEY.toLowerCase()), false, 'Não deve conter API Key')
+  })
+
+  it('9. Formato real PocketBase de data (espaço): segunda submissão encontra registro já gravado com espaço e retorna HTTP 200 duplicado: true', () => {
+    const secrets = createSecretsMock({ CONSULTOR_API_KEY: TEST_VALID_KEY })
+    // Banco já contém registro exatamente como o PocketBase armazena: com espaço ('YYYY-MM-DD HH:MM:SS.SSSZ')
+    const pbStoredDate = '2026-10-01 18:00:00.000Z'
+    const dbState = {
+      meetings: [
+        {
+          id: 'meet_stored_in_pb',
+          nome: 'Teste Schedule V2',
+          empresa: 'Empresa Schedule V2',
+          email: 'schedule.v2.teste@teste.com',
+          telefone: '999999996',
+          data_hora: pbStoredDate,
+          assunto: 'Sistema Web para gerenciamento de leads',
+          observacoes: 'Quero discutir automação',
+          status: 'pendente',
+          request_id: 'req_first_001',
+          created: '2026-09-30 19:17:49.199Z',
+          updated: '2026-09-30 19:17:49.199Z',
+        },
+      ],
+      tool_logs: [],
+      rateLimitStore: {},
+    }
+
+    // Requisição HTTP do cliente com formato ISO padrão com "T"
+    const req: RequestMock = {
+      header: new Map([['x-api-key', TEST_VALID_KEY]]),
+      body: {
+        nome: 'Teste Schedule V2',
+        empresa: 'Empresa Schedule V2',
+        email: 'schedule.v2.teste@teste.com',
+        telefone: '999999996',
+        data_hora: '2026-10-01T18:00:00.000Z', // com "T"
+        assunto: 'Sistema Web para gerenciamento de leads',
+        observacoes: 'Quero discutir automação',
+      },
+    }
+
+    const res = handleScheduleMeetingRequest(req, secrets, dbState)
+    assert.strictEqual(res.status, 200, 'Deve retornar HTTP 200')
+    assert.strictEqual(res.body.ok, true)
+    assert.strictEqual(res.body.data.duplicado, true)
+    assert.strictEqual(res.body.data.meeting_id, 'meet_stored_in_pb')
+    assert.strictEqual(dbState.meetings.length, 1, 'NÃO deve criar novo registro no banco')
+    assert.strictEqual(dbState.tool_logs.length, 1)
+    assert.strictEqual(dbState.tool_logs[0].resultado, 'sucesso')
+    assert.strictEqual(dbState.tool_logs[0].http_status, 200)
+    assert.ok(dbState.tool_logs[0].duracao_ms >= 1)
+  })
+
+  it('10. Fusos horários equivalentes: instantes iguais em fusos diferentes (-03:00 vs Z) retornam HTTP 200 duplicado: true', () => {
+    const secrets = createSecretsMock({ CONSULTOR_API_KEY: TEST_VALID_KEY })
+    const dbState = { meetings: [], tool_logs: [], rateLimitStore: {} }
+
+    // Primeira requisição: 15:00 no fuso de São Paulo (-03:00) = 18:00 UTC
+    const req1: RequestMock = {
+      header: new Map([['x-api-key', TEST_VALID_KEY]]),
+      body: {
+        nome: 'Fuso Cliente',
+        empresa: 'Empresa Fuso',
+        email: 'fuso@cliente.com',
+        telefone: '1199999999',
+        data_hora: '2026-10-15T15:00:00-03:00',
+        assunto: 'Alinhamento fuso SP',
+      },
+    }
+
+    const res1 = handleScheduleMeetingRequest(req1, secrets, dbState)
+    assert.strictEqual(res1.status, 201)
+    assert.strictEqual(res1.body.data.duplicado, false)
+    const initialMeetingId = res1.body.data.meeting_id
+
+    // Segunda requisição: 18:00 em UTC (Z) = mesmo instante absoluto
+    const req2: RequestMock = {
+      header: new Map([['x-api-key', TEST_VALID_KEY]]),
+      body: {
+        nome: 'Fuso Cliente',
+        empresa: 'Empresa Fuso',
+        email: 'fuso@cliente.com',
+        telefone: '1199999999',
+        data_hora: '2026-10-15T18:00:00.000Z',
+        assunto: 'Tentativa duplicada com formato UTC',
+      },
+    }
+
+    const res2 = handleScheduleMeetingRequest(req2, secrets, dbState)
+    assert.strictEqual(res2.status, 200)
+    assert.strictEqual(res2.body.ok, true)
+    assert.strictEqual(res2.body.data.duplicado, true)
+    assert.strictEqual(res2.body.data.meeting_id, initialMeetingId)
+    assert.strictEqual(dbState.meetings.length, 1, 'Total de reuniões deve permanecer 1')
+  })
+
+  it('11. Concorrência real entre duas requisições simultâneas: exatamente 1 registro gravado, segunda recebe HTTP 200 duplicado: true', () => {
+    const secrets = createSecretsMock({ CONSULTOR_API_KEY: TEST_VALID_KEY })
+    const dbState = { meetings: [], tool_logs: [], rateLimitStore: {} }
+
+    const req1: RequestMock = {
+      header: new Map([['x-api-key', TEST_VALID_KEY]]),
+      body: {
+        nome: 'Cliente Concorrente',
+        empresa: 'Empresa Concorrente',
+        email: 'concorrente@empresa.com',
+        telefone: '1199999999',
+        data_hora: FUTURE_ISO_DATE,
+        assunto: 'Reunião Concorrente 1',
+      },
+    }
+
+    const req2: RequestMock = {
+      header: new Map([['x-api-key', TEST_VALID_KEY]]),
+      body: {
+        nome: 'Cliente Concorrente',
+        empresa: 'Empresa Concorrente',
+        email: 'concorrente@empresa.com',
+        telefone: '1199999999',
+        data_hora: FUTURE_ISO_DATE,
+        assunto: 'Reunião Concorrente 2',
+      },
+    }
+
+    // Executa ambas
+    const res1 = handleScheduleMeetingRequest(req1, secrets, dbState)
+    const res2 = handleScheduleMeetingRequest(req2, secrets, dbState)
+
+    // Primeira deve ser 201
+    assert.strictEqual(res1.status, 201)
+    assert.strictEqual(res1.body.data.duplicado, false)
+
+    // Segunda deve ser 200 com duplicado: true e mesmo meeting_id
+    assert.strictEqual(res2.status, 200)
+    assert.strictEqual(res2.body.data.duplicado, true)
+    assert.strictEqual(res2.body.data.meeting_id, res1.body.data.meeting_id)
+
+    // Exatamente 1 registro
+    assert.strictEqual(dbState.meetings.length, 1)
+
+    // Ambos devem gerar tool_log com auditoria completa
+    assert.strictEqual(dbState.tool_logs.length, 2)
+    assert.strictEqual(dbState.tool_logs[0].resultado, 'sucesso')
+    assert.strictEqual(dbState.tool_logs[0].http_status, 201)
+    assert.ok(dbState.tool_logs[0].duracao_ms >= 1)
+
+    assert.strictEqual(dbState.tool_logs[1].resultado, 'sucesso')
+    assert.strictEqual(dbState.tool_logs[1].http_status, 200)
+    assert.ok(dbState.tool_logs[1].duracao_ms >= 1)
+    assert.notStrictEqual(dbState.tool_logs[0].request_id, dbState.tool_logs[1].request_id)
+  })
+
+  it('12. Não-duplicidade preservada: mesmo email com data_hora DIFERENTE cria nova reunião (HTTP 201)', () => {
+    const secrets = createSecretsMock({ CONSULTOR_API_KEY: TEST_VALID_KEY })
+    const dbState = { meetings: [], tool_logs: [], rateLimitStore: {} }
+
+    const date1 = new Date(Date.now() + 86400000 * 3).toISOString()
+    const date2 = new Date(Date.now() + 86400000 * 6).toISOString()
+
+    const req1: RequestMock = {
+      header: new Map([['x-api-key', TEST_VALID_KEY]]),
+      body: {
+        nome: 'Cliente Multi Reunião',
+        empresa: 'Empresa Multi',
+        email: 'multi@empresa.com',
+        telefone: '1199999999',
+        data_hora: date1,
+        assunto: 'Primeira Reunião',
+      },
+    }
+
+    const req2: RequestMock = {
+      header: new Map([['x-api-key', TEST_VALID_KEY]]),
+      body: {
+        nome: 'Cliente Multi Reunião',
+        empresa: 'Empresa Multi',
+        email: 'multi@empresa.com',
+        telefone: '1199999999',
+        data_hora: date2,
+        assunto: 'Segunda Reunião',
+      },
+    }
+
+    const res1 = handleScheduleMeetingRequest(req1, secrets, dbState)
+    assert.strictEqual(res1.status, 201)
+    assert.strictEqual(res1.body.data.duplicado, false)
+
+    const res2 = handleScheduleMeetingRequest(req2, secrets, dbState)
+    assert.strictEqual(res2.status, 201)
+    assert.strictEqual(res2.body.data.duplicado, false)
+    assert.notStrictEqual(res1.body.data.meeting_id, res2.body.data.meeting_id)
+
+    assert.strictEqual(dbState.meetings.length, 2, 'Deve conter exatamente 2 registros de reuniões')
   })
 })

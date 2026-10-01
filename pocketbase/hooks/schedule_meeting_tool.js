@@ -186,16 +186,36 @@
       // ÚNICO ponto onde $app toca a coleção 'meetings'.
       // =========================================================================
       const meetingRepository = {
+        // Converte string ISO para o formato de data do PocketBase ('YYYY-MM-DD HH:MM:SS.SSSZ')
+        formatForPocketBaseDate: (isoDateString) => {
+          if (!isoDateString || typeof isoDateString !== 'string') return isoDateString
+          return isoDateString.replace('T', ' ')
+        },
+
         findMeetingByEmailDataHora: (email, isoDateString) => {
+          const pbDateString = meetingRepository.formatForPocketBaseDate(isoDateString)
           try {
-            const records = $app.findRecordsByFilter(
+            // Consulta no formato de data nativo do PocketBase (com espaço) e fallback para ISO
+            let records = $app.findRecordsByFilter(
               'meetings',
               'email = {:email} && data_hora = {:data_hora}',
               '-created',
               1,
               0,
-              { email: email, data_hora: isoDateString },
+              { email: email, data_hora: pbDateString },
             )
+
+            if ((!records || records.length === 0) && pbDateString !== isoDateString) {
+              records = $app.findRecordsByFilter(
+                'meetings',
+                'email = {:email} && data_hora = {:data_hora}',
+                '-created',
+                1,
+                0,
+                { email: email, data_hora: isoDateString },
+              )
+            }
+
             if (records && records.length > 0) {
               const rec = records[0]
               return {
@@ -205,8 +225,11 @@
                 created: rec.getString('created'),
               }
             }
-          } catch (_) {
-            // Nenhum registro encontrado ou erro de busca
+          } catch (findErr) {
+            console.error(
+              '[FIND_MEETING_ERROR]',
+              findErr && findErr.message ? findErr.message : findErr,
+            )
           }
           return null
         },
@@ -410,7 +433,37 @@
           }
 
           // 2. Nova solicitação de reunião (status inicial sempre 'pendente')
-          const createdRecord = repository.insertMeeting(sanitizedData, reqId)
+          // Trata race condition: se houver violação de constraint de unicidade no insert,
+          // recupera o registro vencedor e retorna HTTP 200 com duplicado: true
+          let createdRecord = null
+          try {
+            createdRecord = repository.insertMeeting(sanitizedData, reqId)
+          } catch (insertErr) {
+            const errStr = insertErr && (insertErr.message || String(insertErr))
+            const isUniqueConstraint =
+              errStr &&
+              (errStr.includes('UNIQUE constraint failed') ||
+                errStr.includes('constraint failed') ||
+                errStr.includes('unique'))
+
+            if (isUniqueConstraint) {
+              const concurrentWinner = repository.findMeetingByEmailDataHora(
+                sanitizedData.email,
+                sanitizedData.data_hora,
+              )
+              if (concurrentWinner) {
+                return {
+                  status: 200,
+                  duplicado: true,
+                  meeting_id: concurrentWinner.id,
+                  meeting_status: concurrentWinner.status,
+                  data_hora: concurrentWinner.data_hora,
+                  created_at: concurrentWinner.created,
+                }
+              }
+            }
+            throw insertErr
+          }
 
           return {
             status: 201,
