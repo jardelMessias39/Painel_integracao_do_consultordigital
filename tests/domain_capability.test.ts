@@ -417,8 +417,37 @@ export const scheduleMeetingDomainService = {
       }
     }
 
-    // 2. Novo agendamento
-    const createdRecord = repository.insertMeeting(sanitizedData, reqId)
+    // 2. Novo agendamento (com tratamento de race condition / índice UNIQUE)
+    let createdRecord = null
+    try {
+      createdRecord = repository.insertMeeting(sanitizedData, reqId)
+    } catch (insertErr: any) {
+      const errStr = insertErr && (insertErr.message || String(insertErr))
+      const isUniqueConstraint =
+        errStr &&
+        (errStr.includes('UNIQUE constraint failed') ||
+          errStr.includes('constraint failed') ||
+          errStr.includes('unique'))
+
+      if (isUniqueConstraint) {
+        const concurrentWinner = repository.findMeetingByEmailDataHora(
+          sanitizedData.email,
+          sanitizedData.data_hora,
+        )
+        if (concurrentWinner) {
+          return {
+            status: 200,
+            duplicado: true,
+            meeting_id: concurrentWinner.id,
+            meeting_status: concurrentWinner.status,
+            data_hora: concurrentWinner.data_hora,
+            created_at: concurrentWinner.created,
+          }
+        }
+      }
+      throw insertErr
+    }
+
     return {
       status: 201,
       duplicado: false,
@@ -858,5 +887,189 @@ describe('Capability schedule_meeting - Testes Diretos de Domínio (Sem HTTP)', 
     assert.strictEqual(result.duplicado, false)
     assert.strictEqual(result.meeting_id, 'meet_new_456')
     assert.strictEqual(inMemoryMeetings.length, 2, 'Deve permitir múltiplos agendamentos em horários distintos')
+  })
+
+  it('8. Formato de data PocketBase: repositório com data gravada com espaço ("YYYY-MM-DD HH:MM:SS.SSSZ") deve ser encontrado pelo findMeetingByEmailDataHora', () => {
+    // Simula a semântica real do PocketBase onde o campo date armazena com espaço
+    const pbStoredDate = '2026-10-01 18:00:00.000Z'
+    const inMemoryMeetings: any[] = [
+      {
+        id: 'meet_pb_space_123',
+        nome: 'Teste PB Format',
+        empresa: 'Empresa PB',
+        email: 'pbformat@teste.com',
+        telefone: '1199999999',
+        data_hora: pbStoredDate,
+        status: 'pendente',
+        created: '2026-09-30 19:17:49.199Z',
+      },
+    ]
+
+    const mockRepo = {
+      formatForPocketBaseDate: (iso: string) => iso.replace('T', ' '),
+      findMeetingByEmailDataHora: function (email: string, isoDate: string) {
+        const pbDate = this.formatForPocketBaseDate(isoDate)
+        return (
+          inMemoryMeetings.find(
+            (m) =>
+              m.email.toLowerCase() === email.toLowerCase() &&
+              (m.data_hora === pbDate || m.data_hora === isoDate),
+          ) || null
+        )
+      },
+      insertMeeting: (data: any, reqId: string) => {
+        const record = {
+          id: 'meet_new',
+          ...data,
+          status: 'pendente',
+          request_id: reqId,
+          created: new Date().toISOString(),
+        }
+        inMemoryMeetings.push(record)
+        return record
+      },
+    }
+
+    // A requisição vem com "T": 2026-10-01T18:00:00.000Z
+    const inputData = {
+      nome: 'Teste PB Format',
+      empresa: 'Empresa PB',
+      email: 'pbformat@teste.com',
+      telefone: '1199999999',
+      data_hora: '2026-10-01T18:00:00.000Z',
+      assunto: 'Tentativa de agendamento duplicado',
+    }
+
+    const val = scheduleMeetingToolCapability.validate(inputData)
+    assert.strictEqual(val.valid, true)
+
+    const result = scheduleMeetingToolCapability.run(val.sanitized, {
+      repository: mockRepo,
+      requestId: 'req_meet_pb_01',
+    })
+
+    assert.strictEqual(result.status, 200, 'Deve retornar 200 para data equivalente no formato PocketBase')
+    assert.strictEqual(result.duplicado, true)
+    assert.strictEqual(result.meeting_id, 'meet_pb_space_123')
+    assert.strictEqual(inMemoryMeetings.length, 1, 'Não deve criar novo registro')
+  })
+
+  it('9. Fusos horários equivalentes: mesmo instante com timezones diferentes (ex: -03:00 vs Z) resulta em duplicado: true', () => {
+    // 2026-10-01T15:00:00-03:00 é exatamente igual a 2026-10-01T18:00:00.000Z
+    const inMemoryMeetings: any[] = []
+    const mockRepo = {
+      findMeetingByEmailDataHora: (email: string, dataHora: string) => {
+        return (
+          inMemoryMeetings.find(
+            (m) =>
+              m.email.toLowerCase() === email.toLowerCase() &&
+              m.data_hora === dataHora,
+          ) || null
+        )
+      },
+      insertMeeting: (data: any, reqId: string) => {
+        const record = {
+          id: 'meet_tz_first',
+          ...data,
+          status: 'pendente',
+          request_id: reqId,
+          created: new Date().toISOString(),
+        }
+        inMemoryMeetings.push(record)
+        return record
+      },
+    }
+
+    // 1ª chamada com fuso de São Paulo (-03:00)
+    const val1 = scheduleMeetingToolCapability.validate({
+      nome: 'Fuso Teste',
+      empresa: 'Empresa Fuso',
+      email: 'fuso@teste.com',
+      telefone: '1199999999',
+      data_hora: '2026-10-01T15:00:00-03:00',
+      assunto: 'Alinhamento fuso SP',
+    })
+    assert.strictEqual(val1.valid, true)
+    const res1 = scheduleMeetingToolCapability.run(val1.sanitized, {
+      repository: mockRepo,
+      requestId: 'req_tz_1',
+    })
+    assert.strictEqual(res1.status, 201)
+    assert.strictEqual(res1.duplicado, false)
+    assert.strictEqual(val1.sanitized.data_hora, '2026-10-01T18:00:00.000Z')
+
+    // 2ª chamada com mesmo instante em UTC (Z)
+    const val2 = scheduleMeetingToolCapability.validate({
+      nome: 'Fuso Teste',
+      empresa: 'Empresa Fuso',
+      email: 'fuso@teste.com',
+      telefone: '1199999999',
+      data_hora: '2026-10-01T18:00:00.000Z',
+      assunto: 'Alinhamento fuso UTC',
+    })
+    assert.strictEqual(val2.valid, true)
+    const res2 = scheduleMeetingToolCapability.run(val2.sanitized, {
+      repository: mockRepo,
+      requestId: 'req_tz_2',
+    })
+    assert.strictEqual(res2.status, 200)
+    assert.strictEqual(res2.duplicado, true)
+    assert.strictEqual(res2.meeting_id, res1.meeting_id)
+    assert.strictEqual(inMemoryMeetings.length, 1)
+  })
+
+  it('10. Concorrência: tentativa simultânea tratada pela constraint UNIQUE resulta em HTTP 200 duplicado: true', () => {
+    const inMemoryMeetings: any[] = []
+    let concurrentWinnerRecord: any = null
+
+    const mockRepo = {
+      findMeetingByEmailDataHora: (email: string, dataHora: string) => {
+        return (
+          inMemoryMeetings.find(
+            (m) =>
+              m.email.toLowerCase() === email.toLowerCase() &&
+              m.data_hora === dataHora,
+          ) || concurrentWinnerRecord
+        )
+      },
+      insertMeeting: (data: any, reqId: string) => {
+        // Simula que antes do insert desta requisição, outra transação concorrente
+        // acabou de vencer e salvar o registro com o mesmo email + data_hora
+        concurrentWinnerRecord = {
+          id: 'meet_winner_concurrent',
+          ...data,
+          status: 'pendente',
+          request_id: 'req_winner_first',
+          created: new Date().toISOString(),
+        }
+        inMemoryMeetings.push(concurrentWinnerRecord)
+
+        // Lança o erro de violação do índice UNIQUE
+        const err: any = new Error(
+          'UNIQUE constraint failed: meetings.email, meetings.data_hora',
+        )
+        throw err
+      },
+    }
+
+    const val = scheduleMeetingToolCapability.validate({
+      nome: 'Race Test',
+      empresa: 'Race Empresa',
+      email: 'race@teste.com',
+      telefone: '1199999999',
+      data_hora: FUTURE_ISO_DATE,
+      assunto: 'Teste de Race Condition',
+    })
+
+    // A capability deve capturar a violação UNIQUE e recuperar o registro vencedor
+    const result = scheduleMeetingToolCapability.run(val.sanitized, {
+      repository: mockRepo,
+      requestId: 'req_race_second',
+    })
+
+    assert.strictEqual(result.status, 200, 'Deve retornar 200 recuperando o vencedor')
+    assert.strictEqual(result.duplicado, true)
+    assert.strictEqual(result.meeting_id, 'meet_winner_concurrent')
+    assert.strictEqual(inMemoryMeetings.length, 1)
   })
 })
