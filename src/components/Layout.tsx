@@ -6,6 +6,8 @@ import {
   UserCheck,
   Activity,
   FileCode2,
+  Settings,
+  KeyRound,
   LogOut,
   Layers,
   ExternalLink,
@@ -48,6 +50,11 @@ const navItems = [
     label: 'Documentação',
     icon: FileCode2,
   },
+  {
+    to: '/configuracoes',
+    label: 'Configurações',
+    icon: Settings,
+  },
 ]
 
 export default function Layout() {
@@ -66,6 +73,7 @@ export default function Layout() {
     if (location.pathname.startsWith('/leads')) return 'Leads do Consultor'
     if (location.pathname.startsWith('/logs')) return 'Logs de Auditoria'
     if (location.pathname.startsWith('/documentacao')) return 'Documentação da API v1'
+    if (location.pathname.startsWith('/configuracoes')) return 'Configurações e Segurança'
     return 'Painel de Integração'
   }
 
@@ -232,6 +240,13 @@ export default function Layout() {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => navigate('/configuracoes')}
+                  className="cursor-pointer"
+                >
+                  <KeyRound className="mr-2 h-4 w-4 text-[#0F766E]" />
+                  <span>Alterar Senha</span>
+                </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => navigate('/documentacao')}
                   className="cursor-pointer"

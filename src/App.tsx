@@ -10,7 +10,10 @@ import Index from '@/pages/Index'
 import Leads from '@/pages/Leads'
 import Logs from '@/pages/Logs'
 import Documentacao from '@/pages/Documentacao'
+import Configuracoes from '@/pages/Configuracoes'
 import Login from '@/pages/Login'
+import ForgotPassword from '@/pages/ForgotPassword'
+import ResetPassword from '@/pages/ResetPassword'
 import NotFound from '@/pages/NotFound'
 
 const App = () => (
@@ -20,8 +23,10 @@ const App = () => (
         <Toaster />
         <Sonner />
         <Routes>
-          {/* Rota pública de login */}
+          {/* Rotas públicas de autenticação */}
           <Route path="/login" element={<Login />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
           {/* Rotas protegidas dentro do layout administrativo */}
           <Route element={<ProtectedRoute />}>
@@ -30,6 +35,7 @@ const App = () => (
               <Route path="/leads" element={<Leads />} />
               <Route path="/logs" element={<Logs />} />
               <Route path="/documentacao" element={<Documentacao />} />
+              <Route path="/configuracoes" element={<Configuracoes />} />
             </Route>
           </Route>
 
