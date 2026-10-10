@@ -51,6 +51,7 @@ export default function ForgotPassword() {
       const { error } = await requestPasswordReset(trimmedEmail)
 
       if (error) {
+        console.error('[ForgotPassword] Erro na solicitação de reset:', error)
         const msg = getErrorMessage(error)
         const lower = msg.toLowerCase()
 
@@ -63,30 +64,62 @@ export default function ForgotPassword() {
           lower.includes('transport')
         ) {
           setErrorMessage(
-            'Não foi possível enviar o e-mail agora — o envio de e-mails pode não estar configurado neste ambiente.',
+            'Não foi possível enviar o e-mail agora — falha no serviço de envio de e-mails.',
           )
           return
         }
 
-        // PocketBase por padrão para segurança de enumeration pode falhar de outras formas
-        // Mas se for outro erro inesperado do servidor:
-        if (lower.includes('network') || lower.includes('fetch')) {
-          setErrorMessage('Erro de conexão ao tentar enviar a solicitação. Verifique sua rede.')
+        // Erro de rede / falha ao contatar servidor de autenticação
+        if (
+          lower.includes('network') ||
+          lower.includes('fetch') ||
+          lower.includes('failed to fetch') ||
+          lower.includes('load failed')
+        ) {
+          setErrorMessage(
+            'Não foi possível conectar ao servidor de autenticação. Verifique sua conexão e tente novamente.',
+          )
           return
         }
+
+        // Qualquer outro erro retornado pelo backend
+        setErrorMessage(
+          msg || 'Não foi possível processar a recuperação de senha. Tente novamente mais tarde.',
+        )
+        return
       }
 
-      // Conforme requisito: mensagem de sucesso genérica
+      // Sucesso: a chamada ao PocketBase completou sem erros (retornou 200 OK)
       setSubmitted(true)
     } catch (err: unknown) {
-      const msg = getErrorMessage(err).toLowerCase()
-      if (msg.includes('smtp') || msg.includes('failed to send') || msg.includes('mail')) {
+      console.error('[ForgotPassword] Exceção inesperada:', err)
+      const msg = getErrorMessage(err)
+      const lower = msg.toLowerCase()
+
+      if (
+        lower.includes('failed to send') ||
+        lower.includes('smtp') ||
+        lower.includes('mail') ||
+        lower.includes('connect') ||
+        lower.includes('transport')
+      ) {
         setErrorMessage(
-          'Não foi possível enviar o e-mail agora — o envio de e-mails pode não estar configurado neste ambiente.',
+          'Não foi possível enviar o e-mail agora — falha no serviço de envio de e-mails.',
+        )
+      } else if (
+        lower.includes('network') ||
+        lower.includes('fetch') ||
+        lower.includes('failed to fetch') ||
+        lower.includes('load failed')
+      ) {
+        setErrorMessage(
+          'Não foi possível conectar ao servidor de autenticação. Verifique sua conexão e tente novamente.',
         )
       } else {
-        // Exibir mensagem genérica para evitar enumeração
-        setSubmitted(true)
+        setErrorMessage(
+          msg ||
+            'Não foi possível conectar ao servidor de autenticação. Tente novamente mais tarde.',
+        )
       }
     } finally {
       setIsSubmitting(false)
