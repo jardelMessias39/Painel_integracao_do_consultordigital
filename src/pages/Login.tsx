@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, Navigate } from 'react-router-dom'
+import { useNavigate, Navigate, Link } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { Layers, KeyRound, Mail, AlertCircle, ArrowRight, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -116,9 +116,17 @@ export default function Login() {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="password" className="text-xs font-medium text-slate-700">
-                  Senha de Acesso
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="password" className="text-xs font-medium text-slate-700">
+                    Senha de Acesso
+                  </Label>
+                  <Link
+                    to="/forgot-password"
+                    className="text-[11px] font-medium text-[#0F766E] hover:text-[#115E59] hover:underline"
+                  >
+                    Esqueci minha senha
+                  </Link>
+                </div>
                 <div className="relative">
                   <KeyRound className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                   <Input
