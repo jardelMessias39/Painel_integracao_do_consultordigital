@@ -17,10 +17,6 @@ dev-dist-ssr
 .pnpm
 
 # pods-manager atomic build operations (rename/restore leftovers).
-# AppManager creates these during build (set-aside previous output before
-# running pnpm build, restore on failure). Success path cleans them up;
-# failure paths may leave orphans. Always ignore them in version control +
-# in the sandbox memGit hydration (see ProjectSandbox.hydrate).
 *.bak-*
 *.legacy-bak-*
 *.failed-*
@@ -43,8 +39,11 @@ screenshot.png
 .oxlintcache
 
 # Environment variables
-.env*
-!.env
+.env
+.env.*
+.env.local
+.env.*.local
+!.env.example
 
-# Linux kernel core dumps (e.g. when oxfmt or pnpm crash)
+# Linux kernel core dumps
 core.[0-9]*

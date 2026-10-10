@@ -42,6 +42,4 @@ export const INTEGRATION_CONFIG = {
   internalEndpointPath: ROUTE_CREATE_LEAD,
   internalScheduleMeetingPath: ROUTE_SCHEDULE_MEETING,
   endpointPath: PUBLIC_CREATE_LEAD_PATH,
-  adminSeedUser: 'jardel.messias.dev@gmail.com',
-  adminSeedPassword: 'Skip@Pass',
 }
