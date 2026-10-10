@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
-import { Layers, KeyRound, Mail, AlertCircle, ArrowRight, Loader2, ShieldCheck } from 'lucide-react'
+import { Layers, KeyRound, Mail, AlertCircle, ArrowRight, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -13,14 +13,16 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { INTEGRATION_CONFIG } from '@/services/toolRegistry'
+
+// Expressão regular padrão para validação de formato de e-mail
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export default function Login() {
   const { login, isAuthenticated, isLoading: authLoading } = useAuth()
   const navigate = useNavigate()
 
-  const [email, setEmail] = useState('jardel.messias.dev@gmail.com')
-  const [password, setPassword] = useState('Skip@Pass')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
@@ -32,14 +34,21 @@ export default function Login() {
     e.preventDefault()
     setErrorMessage(null)
 
-    if (!email.trim() || !password) {
+    const trimmedEmail = email.trim()
+
+    if (!trimmedEmail || !password) {
       setErrorMessage('Por favor, informe seu e-mail e sua senha.')
+      return
+    }
+
+    if (!EMAIL_REGEX.test(trimmedEmail)) {
+      setErrorMessage('Por favor, informe um endereço de e-mail válido.')
       return
     }
 
     try {
       setIsSubmitting(true)
-      await login(email.trim(), password)
+      await login(trimmedEmail, password)
       navigate('/')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Falha na autenticação'
@@ -51,12 +60,6 @@ export default function Login() {
     } finally {
       setIsSubmitting(false)
     }
-  }
-
-  const fillSeedCredentials = () => {
-    setEmail(INTEGRATION_CONFIG.adminSeedUser)
-    setPassword(INTEGRATION_CONFIG.adminSeedPassword)
-    setErrorMessage(null)
   }
 
   return (
@@ -105,6 +108,7 @@ export default function Login() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="admin@exemplo.com"
+                    autoComplete="email"
                     required
                     className="pl-9 text-sm border-slate-200 focus-visible:ring-[#0F766E]"
                   />
@@ -123,34 +127,10 @@ export default function Login() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
+                    autoComplete="current-password"
                     required
                     className="pl-9 text-sm border-slate-200 focus-visible:ring-[#0F766E]"
                   />
-                </div>
-              </div>
-
-              {/* Credenciais de demonstração rápida */}
-              <div className="rounded-lg bg-teal-50/70 border border-teal-100 p-3 text-xs text-teal-900">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="font-semibold text-teal-800 flex items-center gap-1">
-                    <ShieldCheck className="h-3.5 w-3.5" /> Credenciais Seed:
-                  </span>
-                  <button
-                    type="button"
-                    onClick={fillSeedCredentials}
-                    className="text-[11px] font-medium text-teal-700 hover:text-teal-900 underline"
-                  >
-                    Preencher campos
-                  </button>
-                </div>
-                <div className="font-mono text-[11px] text-slate-700 space-y-0.5">
-                  <p>
-                    Email: <span className="font-semibold">{INTEGRATION_CONFIG.adminSeedUser}</span>
-                  </p>
-                  <p>
-                    Senha:{' '}
-                    <span className="font-semibold">{INTEGRATION_CONFIG.adminSeedPassword}</span>
-                  </p>
                 </div>
               </div>
             </CardContent>
