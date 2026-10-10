@@ -27,9 +27,36 @@ import { getErrorMessage, extractFieldErrors } from '@/lib/pocketbase/errors'
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams()
-  const token = searchParams.get('token') || ''
   const navigate = useNavigate()
   const { confirmPasswordReset } = useAuth()
+
+  // Extração defensiva do token:
+  // 1. searchParams.get('token') padrão do React Router
+  // 2. Fallback caso o cliente de email ou navegador tenha passado os parâmetros após # (hash) ou em window.location.search direto
+  const getExtractedToken = () => {
+    let raw = searchParams.get('token')
+    if (!raw && typeof window !== 'undefined') {
+      const fullHref = window.location.href
+      const match = fullHref.match(/[?&]token=([^&#\s]+)/)
+      if (match) {
+        raw = match[1]
+      }
+    }
+    if (!raw) return ''
+    try {
+      raw = decodeURIComponent(raw)
+    } catch {
+      // mantém raw se decode falhar
+    }
+    // Remove aspas, pontuação acidental no final ou parâmetros colados
+    return raw
+      .trim()
+      .replace(/^["'<]+|["'>]+$/g, '')
+      .split(/\s+/)[0]
+      .split('&')[0]
+  }
+
+  const cleanToken = getExtractedToken()
 
   const [password, setPassword] = useState('')
   const [passwordConfirm, setPasswordConfirm] = useState('')
@@ -37,6 +64,7 @@ export default function ResetPassword() {
   const [showConfirm, setShowConfirm] = useState(false)
 
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [hasSubmittedSuccessfully, setHasSubmittedSuccessfully] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [resetSuccess, setResetSuccess] = useState(false)
@@ -71,7 +99,11 @@ export default function ResetPassword() {
     setErrorMessage(null)
     setFieldErrors({})
 
-    if (!token) {
+    if (isSubmitting || hasSubmittedSuccessfully) {
+      return
+    }
+
+    if (!cleanToken) {
       setErrorMessage(
         'Token de recuperação ausente ou inválido no link acessado. Solicite uma nova redefinição.',
       )
@@ -96,23 +128,41 @@ export default function ResetPassword() {
     setIsSubmitting(true)
 
     try {
-      const { error } = await confirmPasswordReset(token, password, passwordConfirm)
+      const { error } = await confirmPasswordReset(cleanToken, password, passwordConfirm)
 
       if (error) {
         const rawErrors = extractFieldErrors(error)
         setFieldErrors(rawErrors)
         const msg = getErrorMessage(error)
+        const lower = msg.toLowerCase()
 
-        if (msg.toLowerCase().includes('token') || msg.toLowerCase().includes('invalid')) {
+        if (
+          lower.includes('expired') ||
+          lower.includes('expirou') ||
+          lower.includes('token expired')
+        ) {
           setErrorMessage(
-            'O link de recuperação expirou ou já foi utilizado. Solicite um novo link.',
+            'O link de recuperação expirou. Por segurança, solicite um novo link de redefinição.',
+          )
+        } else if (
+          lower.includes('already used') ||
+          lower.includes('invalid') ||
+          lower.includes('inválido') ||
+          lower.includes('failed to confirm') ||
+          lower.includes('token')
+        ) {
+          setErrorMessage(
+            'Este link de recuperação é inválido ou já foi utilizado anteriormente. Se já redefiniu sua senha, tente fazer login com a nova credencial ou solicite um novo link.',
           )
         } else {
-          setErrorMessage(msg || 'Falha ao redefinir a senha. Tente novamente.')
+          setErrorMessage(
+            msg || 'Falha ao redefinir a senha. Verifique os dados e tente novamente.',
+          )
         }
         return
       }
 
+      setHasSubmittedSuccessfully(true)
       setResetSuccess(true)
     } catch (err: unknown) {
       setErrorMessage(getErrorMessage(err) || 'Erro inesperado ao redefinir senha.')
@@ -141,7 +191,7 @@ export default function ResetPassword() {
             </CardDescription>
           </CardHeader>
 
-          {!token ? (
+          {!cleanToken ? (
             <CardContent className="space-y-4 pt-2">
               <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-800">
                 <AlertCircle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
@@ -149,7 +199,7 @@ export default function ResetPassword() {
                   <p className="font-semibold">Token não encontrado</p>
                   <p className="mt-0.5 text-amber-700">
                     O link acessado não possui o código de validação de redefinição. Por favor,
-                    utilize o link exato enviado ao seu e-mail.
+                    utilize o link completo enviado ao seu e-mail.
                   </p>
                 </div>
               </div>
