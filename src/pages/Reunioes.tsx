@@ -24,6 +24,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Select,
   SelectContent,
@@ -69,6 +70,11 @@ export default function Reunioes() {
   // Controle de alteração de status
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [cancelTargetMeeting, setCancelTargetMeeting] = useState<MeetingRecord | null>(null)
+
+  // Controle de ações em lote
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [isBatchUpdating, setIsBatchUpdating] = useState(false)
+  const [isBatchCancelConfirmOpen, setIsBatchCancelConfirmOpen] = useState(false)
 
   const fetchMeetings = useCallback(async () => {
     try {
@@ -216,6 +222,100 @@ export default function Reunioes() {
     }
   }
 
+  // IDs visíveis na tabela atual
+  const visibleMeetingIds = useMemo(() => sortedMeetings.map((m) => m.id), [sortedMeetings])
+
+  const allVisibleSelected = useMemo(() => {
+    if (visibleMeetingIds.length === 0) return false
+    return visibleMeetingIds.every((id) => selectedIds.includes(id))
+  }, [visibleMeetingIds, selectedIds])
+
+  const someVisibleSelected = useMemo(() => {
+    return visibleMeetingIds.some((id) => selectedIds.includes(id)) && !allVisibleSelected
+  }, [visibleMeetingIds, selectedIds, allVisibleSelected])
+
+  const handleToggleSelectAll = (checked: boolean) => {
+    if (checked) {
+      // Adiciona todos os visíveis aos selecionados (sem duplicar)
+      setSelectedIds((prev) => Array.from(new Set([...prev, ...visibleMeetingIds])))
+    } else {
+      // Remove todos os visíveis dos selecionados
+      setSelectedIds((prev) => prev.filter((id) => !visibleMeetingIds.includes(id)))
+    }
+  }
+
+  const handleToggleSelectOne = (id: string, checked: boolean) => {
+    if (checked) {
+      setSelectedIds((prev) => [...prev, id])
+    } else {
+      setSelectedIds((prev) => prev.filter((i) => i !== id))
+    }
+  }
+
+  const handleClearSelection = () => {
+    setSelectedIds([])
+  }
+
+  const executeBatchStatusUpdate = async (newStatus: StatusMeeting) => {
+    if (selectedIds.length === 0) return
+
+    try {
+      setIsBatchUpdating(true)
+      const res = await meetingService.updateStatusBatch(selectedIds, newStatus)
+
+      const statusLabels: Record<StatusMeeting, string> = {
+        pendente: 'pendente(s)',
+        confirmada: 'confirmada(s)',
+        realizada: 'marcada(s) como realizada(s)',
+        cancelada: 'cancelada(s)',
+      }
+
+      // Atualiza localmente os que deram certo
+      const successfulIds = new Set(res.results.filter((r) => r.success).map((r) => r.id))
+
+      if (successfulIds.size > 0) {
+        setMeetings((prev) =>
+          prev.map((m) => (successfulIds.has(m.id) ? { ...m, status: newStatus } : m)),
+        )
+        if (selectedMeeting && successfulIds.has(selectedMeeting.id)) {
+          setSelectedMeeting((prev) => (prev ? { ...prev, status: newStatus } : null))
+        }
+      }
+
+      // Feedback resumido por toast
+      if (res.failedCount === 0) {
+        toast({
+          title: 'Ação em lote concluída',
+          description: `${res.successCount} reunião(ões) ${statusLabels[newStatus]} com sucesso.`,
+        })
+        setSelectedIds([])
+      } else if (res.successCount === 0) {
+        toast({
+          title: 'Falha na ação em lote',
+          description: `Todas as ${res.failedCount} atualizações falharam.`,
+          variant: 'destructive',
+        })
+      } else {
+        toast({
+          title: 'Ação em lote parcialmente concluída',
+          description: `${res.successCount} atualizada(s), ${res.failedCount} falhou(aram).`,
+        })
+        // Mantém selecionadas apenas as que falharam para o usuário poder tentar novamente
+        const failedIds = res.results.filter((r) => !r.success).map((r) => r.id)
+        setSelectedIds(failedIds)
+      }
+    } catch (err: unknown) {
+      console.error('Erro na ação em lote:', err)
+      toast({
+        title: 'Erro na ação em lote',
+        description: 'Falha ao processar a atualização em lote.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsBatchUpdating(false)
+    }
+  }
+
   const formatDateTime = (dateString: string) => {
     try {
       const d = new Date(dateString)
@@ -323,12 +423,94 @@ export default function Reunioes() {
         </CardContent>
       </Card>
 
+      {/* Barra de Ações em Lote */}
+      {selectedIds.length > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-teal-50/90 border border-teal-200 rounded-lg text-xs shadow-2xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-teal-900 flex items-center gap-1.5">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-teal-700 text-[11px] font-bold text-white">
+                {selectedIds.length}
+              </span>
+              <span>
+                {selectedIds.length === 1 ? 'reunião selecionada' : 'reuniões selecionadas'}
+              </span>
+            </span>
+            {isBatchUpdating && (
+              <span className="text-teal-700 flex items-center gap-1 text-[11px] font-medium ml-2">
+                <Loader2 className="h-3 w-3 animate-spin" /> Processando lote...
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Confirmar */}
+            <Button
+              type="button"
+              size="sm"
+              disabled={isBatchUpdating}
+              onClick={() => executeBatchStatusUpdate('confirmada')}
+              className="h-8 text-xs bg-emerald-700 hover:bg-emerald-800 text-white border-0 shadow-2xs"
+            >
+              <CalendarCheck className="h-3.5 w-3.5 mr-1" />
+              Confirmar
+            </Button>
+
+            {/* Marcar como realizada */}
+            <Button
+              type="button"
+              size="sm"
+              disabled={isBatchUpdating}
+              onClick={() => executeBatchStatusUpdate('realizada')}
+              className="h-8 text-xs bg-blue-700 hover:bg-blue-800 text-white border-0 shadow-2xs"
+            >
+              <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+              Marcar como realizada
+            </Button>
+
+            {/* Cancelar selecionadas (abre modal de confirmação) */}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={isBatchUpdating}
+              onClick={() => setIsBatchCancelConfirmOpen(true)}
+              className="h-8 text-xs border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300"
+            >
+              <CalendarX className="h-3.5 w-3.5 mr-1" />
+              Cancelar selecionadas
+            </Button>
+
+            {/* Limpar seleção */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={isBatchUpdating}
+              onClick={handleClearSelection}
+              className="h-8 text-xs text-slate-600 hover:text-slate-900"
+            >
+              Limpar seleção
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Tabela de Reuniões */}
       <Card className="border-slate-200 shadow-2xs bg-white overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50/80 font-medium text-slate-600 uppercase tracking-wider text-[11px]">
+                <th className="py-3 px-3 w-10 text-center">
+                  <Checkbox
+                    checked={
+                      allVisibleSelected ? true : someVisibleSelected ? 'indeterminate' : false
+                    }
+                    onCheckedChange={(checked) => handleToggleSelectAll(Boolean(checked))}
+                    aria-label="Selecionar todas as reuniões visíveis"
+                    disabled={isLoading || sortedMeetings.length === 0}
+                  />
+                </th>
                 <th className="py-3 px-4">Contato / Empresa</th>
                 <th className="py-3 px-4">Data e Hora</th>
                 <th className="py-3 px-4">Assunto</th>
@@ -341,7 +523,7 @@ export default function Reunioes() {
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-500">
+                  <td colSpan={8} className="py-12 text-center text-slate-500">
                     <div className="flex items-center justify-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin text-[#0F766E]" />
                       <span>Carregando reuniões...</span>
@@ -350,19 +532,36 @@ export default function Reunioes() {
                 </tr>
               ) : sortedMeetings.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-500">
+                  <td colSpan={8} className="py-12 text-center text-slate-500">
                     Nenhuma reunião agendada encontrada para os critérios selecionados.
                   </td>
                 </tr>
               ) : (
                 sortedMeetings.map((meeting) => {
                   const isFuture = isFutureMeeting(meeting.data_hora)
+                  const isSelected = selectedIds.includes(meeting.id)
                   return (
                     <tr
                       key={meeting.id}
                       onClick={() => setSelectedMeeting(meeting)}
-                      className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
+                      className={`transition-colors cursor-pointer group ${
+                        isSelected ? 'bg-teal-50/40 hover:bg-teal-50/60' : 'hover:bg-slate-50/80'
+                      }`}
                     >
+                      {/* Checkbox de Seleção */}
+                      <td
+                        className="py-3 px-3 text-center whitespace-nowrap"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={(checked) =>
+                            handleToggleSelectOne(meeting.id, Boolean(checked))
+                          }
+                          aria-label={`Selecionar reunião de ${meeting.nome}`}
+                        />
+                      </td>
+
                       {/* Contato / Empresa */}
                       <td className="py-3 px-4">
                         <div className="font-semibold text-slate-900 group-hover:text-teal-800 transition-colors">
@@ -776,6 +975,47 @@ export default function Reunioes() {
               }}
             >
               Confirmar Cancelamento
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmação de Cancelamento em Lote */}
+      <AlertDialog
+        open={isBatchCancelConfirmOpen}
+        onOpenChange={(open) => !open && setIsBatchCancelConfirmOpen(false)}
+      >
+        <AlertDialogContent className="bg-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-slate-900">
+              <AlertTriangle className="h-5 w-5 text-red-600" />
+              Cancelar {selectedIds.length}{' '}
+              {selectedIds.length === 1 ? 'reunião selecionada' : 'reuniões selecionadas'}?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-slate-600 space-y-2">
+              <p>
+                As <strong>{selectedIds.length}</strong> reuniões atualmente selecionadas serão
+                marcadas como <strong>Canceladas</strong>.
+              </p>
+              <p className="text-slate-500">
+                O selo de reunião associado a estes leads na tela de Leads não terá mais prioridade
+                de destaque e as reuniões serão exibidas com status cancelado (vermelho).
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="text-xs" disabled={isBatchUpdating}>
+              Voltar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white text-xs"
+              disabled={isBatchUpdating}
+              onClick={async () => {
+                setIsBatchCancelConfirmOpen(false)
+                await executeBatchStatusUpdate('cancelada')
+              }}
+            >
+              Confirmar Cancelamento em Lote
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

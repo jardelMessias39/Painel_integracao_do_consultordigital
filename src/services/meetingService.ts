@@ -53,4 +53,44 @@ export const meetingService = {
       status,
     })
   },
+
+  /**
+   * Atualiza em lote o status de múltiplas reuniões de forma resiliente
+   */
+  async updateStatusBatch(
+    ids: string[],
+    status: StatusMeeting,
+  ): Promise<{
+    successCount: number
+    failedCount: number
+    results: Array<{ id: string; success: boolean; error?: unknown }>
+  }> {
+    const results = await Promise.allSettled(
+      ids.map(async (id) => {
+        await pb.collection<MeetingRecord>('meetings').update(id, { status })
+        return id
+      }),
+    )
+
+    let successCount = 0
+    let failedCount = 0
+    const detailedResults: Array<{ id: string; success: boolean; error?: unknown }> = []
+
+    results.forEach((res, index) => {
+      const id = ids[index]
+      if (res.status === 'fulfilled') {
+        successCount++
+        detailedResults.push({ id, success: true })
+      } else {
+        failedCount++
+        detailedResults.push({ id, success: false, error: res.reason })
+      }
+    })
+
+    return {
+      successCount,
+      failedCount,
+      results: detailedResults,
+    }
+  },
 }

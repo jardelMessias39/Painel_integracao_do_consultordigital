@@ -16,6 +16,7 @@ import {
   BarChart3,
   Server,
   Layers,
+  Download,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -47,6 +48,7 @@ export default function Logs() {
   const [selectedResultado, setSelectedResultado] = useState<string>('todos')
   const [selectedFerramenta, setSelectedFerramenta] = useState<string>('todas')
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodOption>('tudo')
+  const [isExportingCsv, setIsExportingCsv] = useState(false)
 
   // Calcula a data de corte para o filtro de métricas
   const periodDateLimit = useMemo(() => {
@@ -71,6 +73,7 @@ export default function Logs() {
         perPage: 15,
         resultado: selectedResultado,
         ferramenta: selectedFerramenta,
+        createdGte: periodDateLimit,
       })
       setLogs(res.items)
       setTotalPages(res.totalPages || 1)
@@ -85,7 +88,7 @@ export default function Logs() {
     } finally {
       setIsLoading(false)
     }
-  }, [currentPage, selectedResultado, selectedFerramenta, toast])
+  }, [currentPage, selectedResultado, selectedFerramenta, periodDateLimit, toast])
 
   // Busca logs completos para o dashboard de métricas com base no período selecionado
   const fetchMetricsData = useCallback(async () => {
@@ -113,6 +116,100 @@ export default function Logs() {
   const handleRefreshAll = () => {
     fetchLogs()
     fetchMetricsData()
+  }
+
+  // Exportação CSV segura (LGPD: sem dados pessoais, ponto-e-vírgula pt-BR, BOM UTF-8)
+  const handleExportCsv = async () => {
+    try {
+      setIsExportingCsv(true)
+
+      const result = await toolLogService.getLogsForExport({
+        resultado: selectedResultado,
+        ferramenta: selectedFerramenta,
+        createdGte: periodDateLimit,
+        maxRecords: 5000,
+      })
+
+      if (result.items.length === 0) {
+        toast({
+          title: 'Nenhum registro para exportar',
+          description: 'Não foram encontrados logs para os filtros atualmente selecionados.',
+        })
+        return
+      }
+
+      // Monta as linhas do CSV com separador ';' e escape padrão de CSV
+      // Colunas: id, created, tool, status_http, sucesso, error_code, duracao_ms, request_id
+      const headers = [
+        'id',
+        'created',
+        'tool',
+        'status_http',
+        'sucesso',
+        'error_code',
+        'duracao_ms',
+        'request_id',
+      ]
+
+      const escapeCell = (val: string | number | null | undefined): string => {
+        if (val === null || val === undefined) return ''
+        const str = String(val)
+        if (str.includes(';') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+          return `"${str.replace(/"/g, '""')}"`
+        }
+        return str
+      }
+
+      const rows = result.items.map((log) => {
+        const isSuccess = log.resultado === 'sucesso' ? 'sim' : 'não'
+        return [
+          escapeCell(log.id),
+          escapeCell(log.created),
+          escapeCell(log.ferramenta),
+          escapeCell(log.http_status),
+          escapeCell(isSuccess),
+          escapeCell(log.error_code || ''),
+          escapeCell(log.duracao_ms),
+          escapeCell(log.request_id || ''),
+        ].join(';')
+      })
+
+      const csvContent = '\uFEFF' + [headers.join(';'), ...rows].join('\r\n')
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+
+      const today = new Date().toISOString().slice(0, 10)
+      const fileName = `logs-integracao-${today}.csv`
+
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', fileName)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      if (result.hitCap) {
+        toast({
+          title: 'Exportação concluída (limite atingido)',
+          description: `Exportados os 5.000 registros mais recentes de um total de ${result.totalMatched}.`,
+        })
+      } else {
+        toast({
+          title: 'Exportação concluída',
+          description: `${result.items.length} registro(s) exportado(s) com sucesso para ${fileName}.`,
+        })
+      }
+    } catch (err: unknown) {
+      console.error('Erro ao exportar CSV:', err)
+      toast({
+        title: 'Erro na exportação',
+        description: 'Não foi possível gerar o arquivo CSV dos logs.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsExportingCsv(false)
+    }
   }
 
   // Inscrição Realtime para novos logs
@@ -570,10 +667,38 @@ export default function Logs() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Botão Exportar CSV */}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleExportCsv}
+                disabled={isExportingCsv || isLoading}
+                className="w-full sm:w-auto h-9 text-xs border-slate-200 text-teal-800 hover:bg-teal-50 hover:text-teal-900"
+                title="Exportar todos os logs filtrados em formato CSV (compatível com Excel)"
+              >
+                {isExportingCsv ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                    Exportando CSV...
+                  </>
+                ) : (
+                  <>
+                    <Download className="h-3.5 w-3.5 mr-1.5 text-teal-700" />
+                    Exportar CSV
+                  </>
+                )}
+              </Button>
             </div>
 
             <div className="text-xs text-slate-500 w-full sm:w-auto text-right font-mono">
               Total listado: <span className="font-semibold text-slate-800">{totalItems}</span>
+              {selectedPeriod !== 'tudo' && (
+                <span className="block sm:inline sm:ml-2 text-[11px] text-slate-400">
+                  (Período: {selectedPeriod})
+                </span>
+              )}
             </div>
           </div>
         </CardContent>

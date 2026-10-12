@@ -49,6 +49,68 @@ export const toolLogService = {
     })
   },
 
+  /**
+   * Busca todos os logs filtrados para exportação CSV (até o teto de registros)
+   */
+  async getLogsForExport(params?: {
+    resultado?: string
+    ferramenta?: string
+    createdGte?: string
+    maxRecords?: number
+  }): Promise<{ items: ToolLogRecord[]; totalMatched: number; hitCap: boolean }> {
+    const maxRecords = params?.maxRecords || 5000
+    const filters: string[] = []
+
+    if (params?.resultado && params.resultado !== 'todos') {
+      filters.push(`resultado = '${params.resultado}'`)
+    }
+
+    if (params?.ferramenta && params.ferramenta !== 'todas') {
+      filters.push(`ferramenta = '${params.ferramenta}'`)
+    }
+
+    if (params?.createdGte) {
+      filters.push(`created >= '${params.createdGte}'`)
+    }
+
+    const filterString = filters.join(' && ')
+
+    const batchSize = 500
+    let currentPage = 1
+    const allItems: ToolLogRecord[] = []
+    let totalMatched = 0
+    let hitCap = false
+
+    while (allItems.length < maxRecords) {
+      const remaining = maxRecords - allItems.length
+      const perPage = Math.min(batchSize, remaining)
+
+      const res = await pb.collection<ToolLogRecord>('tool_logs').getList(currentPage, perPage, {
+        filter: filterString || undefined,
+        sort: '-created',
+      })
+
+      totalMatched = res.totalItems
+      allItems.push(...res.items)
+
+      if (currentPage >= res.totalPages || res.items.length === 0) {
+        break
+      }
+
+      currentPage++
+    }
+
+    if (totalMatched > maxRecords) {
+      hitCap = true
+    }
+
+    return {
+      items: allItems,
+      totalMatched,
+      hitCap,
+    }
+  },
+
   async getRecentLogs(limit = 5) {
     return await pb.collection<ToolLogRecord>('tool_logs').getList(1, limit, {
       sort: '-created',
