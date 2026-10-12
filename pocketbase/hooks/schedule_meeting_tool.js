@@ -58,9 +58,18 @@
         },
 
         // 1.3 Autenticação Server-to-Server (Fail-Closed: mesma chave CONSULTOR_API_KEY)
+        // Suporta múltiplas chaves separadas por vírgula em CONSULTOR_API_KEY ou CONSULTOR_API_KEY + CONSULTOR_API_KEY_NEW
         authenticate: (request) => {
-          const configuredKey = $secrets.get('CONSULTOR_API_KEY')
-          if (!configuredKey || !configuredKey.trim()) {
+          const primaryKey = $secrets.get('CONSULTOR_API_KEY') || ''
+          const secondaryKey = $secrets.get('CONSULTOR_API_KEY_NEW') || ''
+
+          // Coleta todas as chaves configuradas (suporta valores únicos ou separados por vírgula)
+          const rawKeys = (primaryKey + ',' + secondaryKey)
+            .split(',')
+            .map((k) => k.trim())
+            .filter((k) => k.length > 0)
+
+          if (rawKeys.length === 0) {
             console.error(
               '[SECURITY] CONSULTOR_API_KEY não configurada nos secrets. Bloqueando requisição (fail-closed).',
             )
@@ -73,13 +82,32 @@
             }
           }
 
-          const authHeaderKey =
-            request.header.get('X-API-Key') || request.header.get('x-api-key') || ''
+          const authHeaderKey = (
+            request.header.get('X-API-Key') ||
+            request.header.get('x-api-key') ||
+            ''
+          ).trim()
 
-          if (
-            !authHeaderKey ||
-            !infra.constantTimeCompare(authHeaderKey.trim(), configuredKey.trim())
-          ) {
+          if (!authHeaderKey) {
+            return {
+              authorized: false,
+              serverConfigError: false,
+              status: 401,
+              code: 'UNAUTHORIZED',
+              message:
+                'Chave de API ausente ou inválida. Forneça o header X-API-Key com uma chave autorizada.',
+            }
+          }
+
+          let isMatch = false
+          for (let i = 0; i < rawKeys.length; i++) {
+            if (infra.constantTimeCompare(authHeaderKey, rawKeys[i])) {
+              isMatch = true
+              break
+            }
+          }
+
+          if (!isMatch) {
             return {
               authorized: false,
               serverConfigError: false,
@@ -92,7 +120,7 @@
 
           return {
             authorized: true,
-            keyIdentifier: authHeaderKey.trim().slice(0, 10),
+            keyIdentifier: authHeaderKey.slice(0, 10),
           }
         },
 
