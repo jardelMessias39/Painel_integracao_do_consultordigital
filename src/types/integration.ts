@@ -46,6 +46,15 @@ export interface MeetingRecord extends RecordModel {
   updated: string
 }
 
+export interface EmailSendRecord extends RecordModel {
+  idempotency_key: string
+  message_id: string
+  status: 'enviado' | 'falha'
+  request_id?: string
+  created: string
+  updated: string
+}
+
 export interface ToolDefinition {
   nome: string
   descricao: string

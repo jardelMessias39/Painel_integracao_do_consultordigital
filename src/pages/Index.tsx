@@ -380,12 +380,11 @@ export default function Index() {
             ))}
 
             <div className="p-3 rounded-lg border border-dashed border-slate-300 bg-white text-xs text-slate-500 space-y-1">
-              <p className="font-medium text-slate-700">Próximas ferramentas preparadas:</p>
+              <p className="font-medium text-slate-700">Próximas ferramentas planejadas:</p>
               <p className="text-[11px] text-slate-500">
-                • <code className="font-mono">enviar_email</code> (Notificações transacionais)
-                <br />• <code className="font-mono">consultar_lead</code> (Busca de contexto
-                anterior)
-                <br />• <code className="font-mono">integracao_obsidian</code> / Adaptador MCP
+                • <code className="font-mono">consultar_lead</code> (Busca de contexto anterior)
+                <br />• <code className="font-mono">integracao_obsidian</code> (Knowledge base)
+                <br />• Adaptador MCP (Consumo direto pelo agente)
               </p>
             </div>
           </CardContent>

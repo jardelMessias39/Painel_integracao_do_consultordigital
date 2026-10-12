@@ -8,6 +8,7 @@ import {
   Code2,
   Send,
   Calendar,
+  Mail,
   AlertTriangle,
   RefreshCw,
   Lock,
@@ -41,6 +42,7 @@ const SECTIONS: NavSection[] = [
   { id: 'autenticacao', label: 'Autenticação' },
   { id: 'create-lead', label: 'create_lead', badge: 'POST' },
   { id: 'schedule-meeting', label: 'schedule_meeting', badge: 'POST' },
+  { id: 'send-email', label: 'send_email', badge: 'POST' },
   { id: 'envelope-respostas', label: 'Envelope Padrão' },
   { id: 'erros-codigos', label: 'Erros e Códigos' },
   { id: 'idempotencia', label: 'Idempotência' },
@@ -57,10 +59,12 @@ export default function Documentacao() {
   const publicBaseUrl = INTEGRATION_CONFIG.publicDomain
   const canonicalCreateLeadUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicEndpointPath}`
   const canonicalScheduleMeetingUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicScheduleMeetingPath}`
+  const canonicalSendEmailUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicSendEmailPath}`
 
   const internalBaseUrl = INTEGRATION_CONFIG.backendUrl
   const internalCreateLeadUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalEndpointPath}`
   const internalScheduleMeetingUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalScheduleMeetingPath}`
+  const internalSendEmailUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalSendEmailPath}`
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text)
@@ -185,6 +189,44 @@ export default function Documentacao() {
     2,
   )
 
+  const sendEmailPayload = JSON.stringify(
+    {
+      destinatario: 'carlos.silva@logitech.com.br',
+      assunto: 'Confirmação de Agendamento — Consultor Digital',
+      corpo:
+        'Olá Carlos,\n\nConfirmamos o agendamento da sua reunião técnica para alinhamento de escopo no dia 25/11 às 15:00.\n\nAtenciosamente,\nEquipe Consultor Digital',
+      idempotency_key: 'idem_email_logitech_20261125_1500',
+    },
+    null,
+    2,
+  )
+
+  const sendEmailSuccess201 = JSON.stringify(
+    {
+      ok: true,
+      data: {
+        message_id: 'msg_98abc72f10d9e847120a',
+        status: 'enviado',
+        duplicado: false,
+      },
+    },
+    null,
+    2,
+  )
+
+  const sendEmailSuccess200 = JSON.stringify(
+    {
+      ok: true,
+      data: {
+        message_id: 'msg_98abc72f10d9e847120a',
+        status: 'enviado',
+        duplicado: true,
+      },
+    },
+    null,
+    2,
+  )
+
   const errorValidationError = JSON.stringify(
     {
       ok: false,
@@ -258,6 +300,11 @@ export default function Documentacao() {
   -H "X-API-Key: sk-live_********************" \\
   -d '${scheduleMeetingPayload}'`
 
+  const curlSendEmail = `curl -X POST "${canonicalSendEmailUrl}" \\
+  -H "Content-Type: application/json" \\
+  -H "X-API-Key: sk-live_********************" \\
+  -d '${sendEmailPayload}'`
+
   const nodeFullExample = `// Chamada server-to-server executada no backend do chatbot (ex: Render / Node.js)
 // URL canônica com fallback automático em caso de 405 do proxy público
 const CANONICAL_URL = process.env.INTEGRATION_LAYER_URL || 
@@ -317,6 +364,16 @@ async function agendarReuniao(meeting) {
     data_hora: meeting.data_hora, // ISO 8601 com offset, ex: "2026-11-25T15:00:00-03:00"
     assunto: meeting.assunto,
     observacoes: meeting.observacoes || '',
+  });
+}
+
+// 3. Enviar e-mail transacional (com idempotência opcional)
+async function enviarEmail(emailData) {
+  return postToIntegrationLayer('${canonicalSendEmailUrl}', {
+    destinatario: emailData.destinatario,
+    assunto: emailData.assunto,
+    corpo: emailData.corpo,
+    idempotency_key: emailData.idempotency_key, // ex: \`idem_email_\${emailData.meeting_id}\`
   });
 }`
 
@@ -390,7 +447,7 @@ def criar_lead(dados_lead):
             <Server className="h-3.5 w-3.5 text-[#0F766E]" />
             <span>Documentação da API</span>
             <Badge className="bg-teal-100 text-[#0F766E] hover:bg-teal-100 text-[10px] py-0 px-1.5 font-mono">
-              2 Endpoints
+              3 Endpoints
             </Badge>
           </button>
 
@@ -510,19 +567,19 @@ def criar_lead(dados_lead):
                     consultores.
                   </p>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
                     <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50 space-y-1.5">
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-slate-900 text-xs flex items-center gap-1.5">
                           <Send className="h-3.5 w-3.5 text-[#0F766E]" />
-                          Endpoint: POST /create_lead
+                          POST /create_lead
                         </span>
                         <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-[10px]">
                           V1 Baseline
                         </Badge>
                       </div>
                       <p className="text-slate-600 text-xs">
-                        Registra um lead comercial gerado no chat. Idempotência estrita por{' '}
+                        Registra lead comercial. Idempotência estrita por{' '}
                         <strong>email + empresa</strong>.
                       </p>
                       <code className="text-[11px] font-mono text-slate-800 bg-white p-1 rounded border border-slate-200 block truncate">
@@ -534,18 +591,36 @@ def criar_lead(dados_lead):
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-slate-900 text-xs flex items-center gap-1.5">
                           <Calendar className="h-3.5 w-3.5 text-[#0F766E]" />
-                          Endpoint: POST /schedule_meeting
+                          POST /schedule_meeting
                         </span>
                         <Badge className="bg-teal-100 text-teal-800 border-teal-200 text-[10px]">
-                          V2 Operacional
+                          V2 Reuniões
                         </Badge>
                       </div>
                       <p className="text-slate-600 text-xs">
-                        Agenda uma reunião técnica/comercial. Idempotência por{' '}
-                        <strong>email + data_hora</strong>.
+                        Agenda reunião técnica. Idempotência por <strong>email + data_hora</strong>.
                       </p>
                       <code className="text-[11px] font-mono text-slate-800 bg-white p-1 rounded border border-slate-200 block truncate">
                         /api/backend/v1/tools/schedule_meeting
+                      </code>
+                    </div>
+
+                    <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-slate-900 text-xs flex items-center gap-1.5">
+                          <Mail className="h-3.5 w-3.5 text-[#0F766E]" />
+                          POST /send_email
+                        </span>
+                        <Badge className="bg-indigo-100 text-indigo-800 border-indigo-200 text-[10px]">
+                          V2 E-mails
+                        </Badge>
+                      </div>
+                      <p className="text-slate-600 text-xs">
+                        Envio real via SMTP. Idempotência opcional por{' '}
+                        <strong>idempotency_key</strong>.
+                      </p>
+                      <code className="text-[11px] font-mono text-slate-800 bg-white p-1 rounded border border-slate-200 block truncate">
+                        /api/backend/v1/tools/send_email
                       </code>
                     </div>
                   </div>
@@ -653,10 +728,12 @@ def criar_lead(dados_lead):
                         <span>Rate Limiting</span>
                       </div>
                       <p className="text-teal-900 leading-relaxed">
-                        A Camada de Integração aplica limite de{' '}
-                        <strong>120 requisições por minuto</strong> por chave. Se excedido, o
-                        servidor retorna HTTP 429 com código{' '}
-                        <code className="font-mono">RATE_LIMITED</code>.
+                        A Camada aplica limites em memória por chave: <strong>120 req/min</strong>{' '}
+                        para <code className="font-mono">create_lead</code> e{' '}
+                        <code className="font-mono">schedule_meeting</code>, e{' '}
+                        <strong>30 req/min</strong> mais restritivo para{' '}
+                        <code className="font-mono">send_email</code>. Se excedido, o servidor
+                        retorna HTTP 429 com código <code className="font-mono">RATE_LIMITED</code>.
                       </p>
                     </div>
                   </div>
@@ -1181,6 +1258,235 @@ def criar_lead(dados_lead):
               </Card>
             </section>
 
+            {/* SEÇÃO 4.1: ENDPOINT send_email (NOVO - V2) */}
+            <section id="send-email" className="scroll-mt-20">
+              <Card className="border-slate-200 bg-white shadow-2xs">
+                <CardHeader className="pb-3 border-b border-slate-100">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-indigo-600 text-white font-mono text-xs">POST</Badge>
+                      <CardTitle className="text-base sm:text-lg font-bold text-slate-900 font-mono">
+                        /send_email
+                      </CardTitle>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="border-indigo-300 text-indigo-800 bg-indigo-50 text-xs w-fit"
+                    >
+                      Idempotência opcional: idempotency_key
+                    </Badge>
+                  </div>
+                  <CardDescription className="text-xs text-slate-500 mt-1">
+                    Envia um e-mail transacional real via serviço SMTP padrão do servidor. Suporta
+                    chave de idempotência enviada pelo chamador para prevenir reenvios acidentais.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-4 space-y-4">
+                  {/* Tabela de Campos */}
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide mb-2">
+                      Campos da Requisição (JSON Body)
+                    </h3>
+                    <div className="overflow-x-auto rounded-lg border border-slate-200">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-200 bg-slate-50/90 font-medium text-slate-600">
+                            <th className="py-2.5 px-3">Campo</th>
+                            <th className="py-2.5 px-3">Tipo</th>
+                            <th className="py-2.5 px-3">Obrigatoriedade</th>
+                            <th className="py-2.5 px-3">Regras / Descrição</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-sans">
+                          <tr>
+                            <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                              destinatario
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-500">string (email)</td>
+                            <td className="py-2.5 px-3">
+                              <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px]">
+                                Obrigatório
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600">
+                              Endereço de e-mail de destino válido (RFC). Máximo de 320 caracteres.
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                              assunto
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
+                            <td className="py-2.5 px-3">
+                              <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px]">
+                                Obrigatório
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600">
+                              Título/subject do e-mail. Máximo de 200 caracteres.
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                              corpo
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
+                            <td className="py-2.5 px-3">
+                              <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px]">
+                                Obrigatório
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600">
+                              Conteúdo textual do e-mail (quebras de linha suportadas). Máximo de
+                              5000 caracteres.
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                              idempotency_key
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
+                            <td className="py-2.5 px-3">
+                              <Badge
+                                variant="outline"
+                                className="text-slate-600 border-slate-300 text-[10px]"
+                              >
+                                Opcional
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600">
+                              Identificador único gerado pelo chamador (máx 100). Se fornecido e já
+                              processado anteriormente, a API retorna HTTP 200 com{' '}
+                              <code className="font-mono">duplicado: true</code> SEM reenviar o
+                              e-mail.
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Notas de Arquitetura e Segurança */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="p-3.5 rounded-lg border border-indigo-200 bg-indigo-50/70 space-y-1">
+                      <span className="font-bold text-indigo-950 text-xs block">
+                        Envio Real via SMTP Padrão
+                      </span>
+                      <p className="text-xs text-indigo-900 leading-relaxed">
+                        O envio é executado diretamente através do cliente SMTP nativo do PocketBase{' '}
+                        (<code className="font-mono">$app.newMailClient().send(message)</code>). Não
+                        depende de serviços externos adicionais.
+                      </p>
+                    </div>
+
+                    <div className="p-3.5 rounded-lg border border-amber-200 bg-amber-50/70 space-y-1">
+                      <span className="font-bold text-amber-950 text-xs block">
+                        Privacidade &amp; LGPD Estrita
+                      </span>
+                      <p className="text-xs text-amber-900 leading-relaxed">
+                        O assunto e o corpo do e-mail{' '}
+                        <strong>NUNCA são persistidos em tabelas de logs</strong>. A tabela de
+                        rastreio de idempotência grava apenas chave, message_id, status e
+                        timestamps.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Exemplos de Request e Response */}
+                  <Tabs defaultValue="req" className="w-full">
+                    <TabsList className="bg-slate-100 border border-slate-200 text-xs">
+                      <TabsTrigger value="req" className="text-xs">
+                        Payload de Envio
+                      </TabsTrigger>
+                      <TabsTrigger value="res201" className="text-xs">
+                        Resposta 201 (Enviado)
+                      </TabsTrigger>
+                      <TabsTrigger value="res200" className="text-xs">
+                        Resposta 200 (Duplicado)
+                      </TabsTrigger>
+                      <TabsTrigger value="curl" className="text-xs">
+                        cURL
+                      </TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="req">
+                      <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 relative">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard(sendEmailPayload, 'Payload send_email')}
+                          className="absolute top-2 right-2 h-7 text-xs text-teal-400 hover:text-teal-300 hover:bg-slate-800"
+                        >
+                          {copiedSnippet === 'Payload send_email' ? (
+                            <Check className="h-3.5 w-3.5 mr-1" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5 mr-1" />
+                          )}
+                          {copiedSnippet === 'Payload send_email' ? 'Copiado!' : 'Copiar'}
+                        </Button>
+                        <pre className="font-mono text-xs text-emerald-300 overflow-x-auto whitespace-pre pt-5 sm:pt-0">
+                          {sendEmailPayload}
+                        </pre>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="res201">
+                      <div className="rounded-lg border border-emerald-300 bg-slate-950 p-3 relative">
+                        <div className="flex items-center gap-2 mb-2 pb-2 border-b border-slate-800">
+                          <Badge className="bg-emerald-600 text-white font-mono text-[10px]">
+                            HTTP 201 Created
+                          </Badge>
+                          <span className="text-xs text-emerald-400 font-mono">
+                            duplicado: false | status: enviado
+                          </span>
+                        </div>
+                        <pre className="font-mono text-xs text-emerald-300 overflow-x-auto whitespace-pre">
+                          {sendEmailSuccess201}
+                        </pre>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="res200">
+                      <div className="rounded-lg border border-teal-300 bg-slate-950 p-3 relative">
+                        <div className="flex items-center gap-2 mb-2 pb-2 border-b border-slate-800">
+                          <Badge className="bg-teal-600 text-white font-mono text-[10px]">
+                            HTTP 200 OK
+                          </Badge>
+                          <span className="text-xs text-teal-400 font-mono">
+                            duplicado: true (idempotency_key repetida — sem reenvio)
+                          </span>
+                        </div>
+                        <pre className="font-mono text-xs text-teal-300 overflow-x-auto whitespace-pre">
+                          {sendEmailSuccess200}
+                        </pre>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="curl">
+                      <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 relative">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard(curlSendEmail, 'cURL send_email')}
+                          className="absolute top-2 right-2 h-7 text-xs text-teal-400 hover:text-teal-300 hover:bg-slate-800"
+                        >
+                          {copiedSnippet === 'cURL send_email' ? (
+                            <Check className="h-3.5 w-3.5 mr-1" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5 mr-1" />
+                          )}
+                          {copiedSnippet === 'cURL send_email' ? 'Copiado!' : 'Copiar'}
+                        </Button>
+                        <pre className="font-mono text-xs text-slate-200 overflow-x-auto whitespace-pre pt-5 sm:pt-0">
+                          {curlSendEmail}
+                        </pre>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                </CardContent>
+              </Card>
+            </section>
+
             {/* SEÇÃO 5: ENVELOPE PADRÃO DE RESPOSTA */}
             <section id="envelope-respostas" className="scroll-mt-20">
               <Card className="border-slate-200 bg-white shadow-2xs">
@@ -1427,7 +1733,7 @@ def criar_lead(dados_lead):
                     implementam <strong>idempotência estrita</strong>.
                   </p>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="p-4 rounded-lg border border-slate-200 bg-slate-50 space-y-2">
                       <span className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
                         <Send className="h-4 w-4 text-[#0F766E]" />
@@ -1439,15 +1745,13 @@ def criar_lead(dados_lead):
                       </p>
                       <ul className="text-xs text-slate-600 space-y-1 list-disc pl-4">
                         <li>
-                          <strong>1ª chamada:</strong> Cria o lead e retorna{' '}
-                          <strong>HTTP 201</strong> com{' '}
-                          <code className="font-mono font-semibold">duplicado: false</code>.
+                          <strong>1ª chamada:</strong> Cria lead (<strong>HTTP 201</strong>,{' '}
+                          <code className="font-mono">duplicado: false</code>).
                         </li>
                         <li>
-                          <strong>Chamadas subsequentes:</strong> NÃO criam novo lead; localizam o
-                          registro anterior e retornam <strong>HTTP 200</strong> com o mesmo{' '}
+                          <strong>Subsequentes:</strong> Retorna <strong>HTTP 200</strong> com mesmo{' '}
                           <code className="font-mono">lead_id</code> e{' '}
-                          <code className="font-mono font-semibold">duplicado: true</code>.
+                          <code className="font-mono">duplicado: true</code>.
                         </li>
                       </ul>
                     </div>
@@ -1463,16 +1767,36 @@ def criar_lead(dados_lead):
                       </p>
                       <ul className="text-xs text-slate-600 space-y-1 list-disc pl-4">
                         <li>
-                          <strong>1ª chamada:</strong> Cria a reunião e retorna{' '}
-                          <strong>HTTP 201</strong> com{' '}
-                          <code className="font-mono font-semibold">duplicado: false</code>.
+                          <strong>1ª chamada:</strong> Cria reunião (<strong>HTTP 201</strong>,{' '}
+                          <code className="font-mono">duplicado: false</code>).
                         </li>
                         <li>
-                          <strong>Chamadas subsequentes com mesma data:</strong> Retornam{' '}
-                          <strong>HTTP 200</strong> com o mesmo{' '}
+                          <strong>Subsequentes:</strong> Retorna <strong>HTTP 200</strong> com mesmo{' '}
                           <code className="font-mono">meeting_id</code> e{' '}
-                          <code className="font-mono font-semibold">duplicado: true</code>,
-                          protegendo contra duplicatas na agenda.
+                          <code className="font-mono">duplicado: true</code>.
+                        </li>
+                      </ul>
+                    </div>
+
+                    <div className="p-4 rounded-lg border border-slate-200 bg-slate-50 space-y-2">
+                      <span className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                        <Mail className="h-4 w-4 text-indigo-700" />
+                        Idempotência de E-mails
+                      </span>
+                      <p className="text-xs text-slate-600">
+                        Chave: <strong className="font-mono text-slate-800">
+                          idempotency_key
+                        </strong>{' '}
+                        (opcional).
+                      </p>
+                      <ul className="text-xs text-slate-600 space-y-1 list-disc pl-4">
+                        <li>
+                          <strong>Com chave nova:</strong> Envia e grava (<strong>HTTP 201</strong>,{' '}
+                          <code className="font-mono">duplicado: false</code>).
+                        </li>
+                        <li>
+                          <strong>Chave repetida:</strong> Retorna <strong>HTTP 200</strong> com{' '}
+                          <code className="font-mono">duplicado: true</code> <em>SEM reenviar</em>.
                         </li>
                       </ul>
                     </div>
@@ -1643,19 +1967,22 @@ def criar_lead(dados_lead):
                         <li>
                           Os <strong>logs de auditoria técnica</strong> (
                           <code className="font-mono">tool_logs</code>) registram apenas metadados
-                          operacionais: ferramenta, status HTTP, código de erro e tempo de execução
-                          em milissegundos.
+                          operacionais: ferramenta, status HTTP, código de erro, request_id e tempo
+                          de execução em milissegundos.
                         </li>
                         <li>
                           <strong>Nenhum dado pessoal sensível (PII)</strong> — como nome, e-mail,
-                          telefone ou conteúdo da conversa — é persistido na tabela de logs de
-                          auditoria.
+                          telefone, conteúdo da conversa ou{' '}
+                          <em>assunto/corpo de e-mails enviados</em> — é persistido na tabela de
+                          logs de auditoria ou no rastreio de envio (
+                          <code className="font-mono">email_sends</code>).
                         </li>
                         <li>
-                          Os dados de contato do lead residem exclusivamente nas coleções de negócio
-                          (<code className="font-mono">leads</code> e{' '}
-                          <code className="font-mono">meetings</code>), com controle estrito de
-                          acesso.
+                          Os dados residem exclusivamente nas coleções de negócio (
+                          <code className="font-mono">leads</code>,{' '}
+                          <code className="font-mono">meetings</code> e o rastreio cego{' '}
+                          <code className="font-mono">email_sends</code>), com controle estrito de
+                          acesso por regras RLS do PocketBase.
                         </li>
                       </ul>
                     </div>

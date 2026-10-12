@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-12T17:28:57.769Z",
+  "generatedAt": "2026-10-12T18:32:41.790Z",
   "collections": [
     {
       "name": "users",
@@ -305,6 +305,63 @@
         "CREATE INDEX idx_meetings_data_hora ON meetings (data_hora)",
         "CREATE INDEX idx_meetings_created ON meetings (created DESC)",
         "CREATE UNIQUE INDEX `idx_meetings_email_data_hora_unique` ON `meetings` (email, data_hora)"
+      ]
+    },
+    {
+      "name": "email_sends",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "idempotency_key",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "message_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["enviado", "falha"]
+        },
+        {
+          "name": "request_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_email_sends_idempotency_key ON email_sends (idempotency_key)",
+        "CREATE INDEX idx_email_sends_message_id ON email_sends (message_id)",
+        "CREATE INDEX idx_email_sends_created ON email_sends (created DESC)"
       ]
     }
   ]
