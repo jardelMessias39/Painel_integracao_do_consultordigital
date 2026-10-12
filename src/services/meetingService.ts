@@ -35,4 +35,13 @@ export const meetingService = {
   async getMeetingById(id: string) {
     return await pb.collection<MeetingRecord>('meetings').getOne(id)
   },
+
+  /**
+   * Busca todas as reuniões cadastradas para indexação em memória (ex: cruzamento por e-mail na tela de Leads)
+   */
+  async getAllMeetings() {
+    return await pb.collection<MeetingRecord>('meetings').getFullList({
+      sort: '+data_hora',
+    })
+  },
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import {
   Search,
   Filter,
@@ -36,19 +36,32 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet'
 import { leadService } from '@/services/leadService'
+import { meetingService } from '@/services/meetingService'
 import { useRealtime } from '@/hooks/use-realtime'
-import type { LeadRecord, EstagioLead } from '@/types/integration'
+import type { LeadRecord, EstagioLead, MeetingRecord } from '@/types/integration'
 import { useToast } from '@/hooks/use-toast'
+import { buildLeadMeetingsMap, normalizeEmail, LeadMeetingInfo } from '@/lib/leadMeetingUtils'
+import { LeadMeetingBadge } from '@/components/LeadMeetingBadge'
 
 export default function Leads() {
   const { toast } = useToast()
 
   const [leads, setLeads] = useState<LeadRecord[]>([])
+  const [meetings, setMeetings] = useState<MeetingRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedEstagio, setSelectedEstagio] = useState<string>('todos')
   const [selectedLead, setSelectedLead] = useState<LeadRecord | null>(null)
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
+
+  const fetchMeetings = useCallback(async () => {
+    try {
+      const items = await meetingService.getAllMeetings()
+      setMeetings(items)
+    } catch (err) {
+      console.error('Erro ao carregar reuniões para cruzamento:', err)
+    }
+  }, [])
 
   const fetchLeads = useCallback(async () => {
     try {
@@ -73,12 +86,23 @@ export default function Leads() {
 
   useEffect(() => {
     fetchLeads()
-  }, [fetchLeads])
+    fetchMeetings()
+  }, [fetchLeads, fetchMeetings])
 
   // Inscrição Realtime para novos leads
   useRealtime<LeadRecord>('leads', () => {
     fetchLeads()
   })
+
+  // Inscrição Realtime para reuniões (refletir novas reuniões ou alterações de status)
+  useRealtime<MeetingRecord>('meetings', () => {
+    fetchMeetings()
+  })
+
+  // Mapeamento em memória: e-mail -> melhor reunião para selo visual
+  const leadMeetingsMap = useMemo(() => {
+    return buildLeadMeetingsMap(meetings)
+  }, [meetings])
 
   const handleUpdateStatus = async (newEstagio: EstagioLead) => {
     if (!selectedLead) return
@@ -214,6 +238,7 @@ export default function Leads() {
                 <th className="py-3 px-4">Lead / Contato</th>
                 <th className="py-3 px-4">Empresa</th>
                 <th className="py-3 px-4">Estágio</th>
+                <th className="py-3 px-4">Reunião</th>
                 <th className="py-3 px-4">Necessidade Identificada</th>
                 <th className="py-3 px-4">Recebido em</th>
                 <th className="py-3 px-4 text-right">Ação</th>
@@ -222,7 +247,7 @@ export default function Leads() {
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-500">
+                  <td colSpan={7} className="py-12 text-center text-slate-500">
                     <div className="flex items-center justify-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin text-[#0F766E]" />
                       <span>Carregando leads...</span>
@@ -231,78 +256,98 @@ export default function Leads() {
                 </tr>
               ) : leads.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-500">
+                  <td colSpan={7} className="py-12 text-center text-slate-500">
                     Nenhum lead encontrado para os critérios selecionados.
                   </td>
                 </tr>
               ) : (
-                leads.map((lead) => (
-                  <tr
-                    key={lead.id}
-                    onClick={() => setSelectedLead(lead)}
-                    className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
-                  >
-                    <td className="py-3 px-4">
-                      <div className="font-semibold text-slate-900 group-hover:text-teal-800 transition-colors">
-                        {lead.nome}
-                      </div>
-                      <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
-                        <span className="flex items-center gap-1 font-mono">
-                          <Mail className="h-3 w-3 text-slate-400" />
-                          {lead.email}
-                        </span>
-                        {lead.telefone && (
-                          <span className="flex items-center gap-1 font-mono text-slate-400">
-                            • <Phone className="h-3 w-3" /> {lead.telefone}
+                leads.map((lead) => {
+                  const meetingInfo = leadMeetingsMap.get(normalizeEmail(lead.email))
+                  return (
+                    <tr
+                      key={lead.id}
+                      onClick={() => setSelectedLead(lead)}
+                      className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
+                    >
+                      <td className="py-3 px-4">
+                        <div className="font-semibold text-slate-900 group-hover:text-teal-800 transition-colors">
+                          {lead.nome}
+                        </div>
+                        <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
+                          <span className="flex items-center gap-1 font-mono">
+                            <Mail className="h-3 w-3 text-slate-400" />
+                            {lead.email}
                           </span>
+                          {lead.telefone && (
+                            <span className="flex items-center gap-1 font-mono text-slate-400">
+                              • <Phone className="h-3 w-3" /> {lead.telefone}
+                            </span>
+                          )}
+                        </div>
+                        {/* Indicador no mobile (caso a coluna da tabela fique escondida em telas menores) */}
+                        {meetingInfo && (
+                          <div className="mt-1.5 sm:hidden">
+                            <LeadMeetingBadge meetingInfo={meetingInfo} />
+                          </div>
                         )}
-                      </div>
-                    </td>
+                      </td>
 
-                    <td className="py-3 px-4">
-                      <span className="font-medium text-slate-800 flex items-center gap-1.5">
-                        <Building className="h-3.5 w-3.5 text-slate-400" />
-                        {lead.empresa}
-                      </span>
-                    </td>
+                      <td className="py-3 px-4">
+                        <span className="font-medium text-slate-800 flex items-center gap-1.5">
+                          <Building className="h-3.5 w-3.5 text-slate-400" />
+                          {lead.empresa}
+                        </span>
+                      </td>
 
-                    <td className="py-3 px-4">{getEstagioBadge(lead.estagio_do_lead)}</td>
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        {getEstagioBadge(lead.estagio_do_lead)}
+                      </td>
 
-                    <td className="py-3 px-4 max-w-xs">
-                      <p
-                        className="text-slate-600 truncate text-[11px]"
-                        title={lead.necessidade_identificada || 'Não informada'}
-                      >
-                        {lead.necessidade_identificada || '—'}
-                      </p>
-                    </td>
+                      {/* Selo Visual de Reunião Agendada / Status */}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        {meetingInfo ? (
+                          <LeadMeetingBadge meetingInfo={meetingInfo} />
+                        ) : (
+                          <span className="text-slate-400 text-[11px]">—</span>
+                        )}
+                      </td>
 
-                    <td className="py-3 px-4 text-slate-500 font-mono text-[11px] whitespace-nowrap">
-                      {new Date(lead.created).toLocaleDateString('pt-BR', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </td>
+                      <td className="py-3 px-4 max-w-xs">
+                        <p
+                          className="text-slate-600 truncate text-[11px]"
+                          title={lead.necessidade_identificada || 'Não informada'}
+                        >
+                          {lead.necessidade_identificada || '—'}
+                        </p>
+                      </td>
 
-                    <td className="py-3 px-4 text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setSelectedLead(lead)
-                        }}
-                        className="h-8 text-xs text-teal-800 hover:text-teal-900 hover:bg-teal-50"
-                      >
-                        <Eye className="h-3.5 w-3.5 mr-1" />
-                        Ver Detalhes
-                      </Button>
-                    </td>
-                  </tr>
-                ))
+                      <td className="py-3 px-4 text-slate-500 font-mono text-[11px] whitespace-nowrap">
+                        {new Date(lead.created).toLocaleDateString('pt-BR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </td>
+
+                      <td className="py-3 px-4 text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setSelectedLead(lead)
+                          }}
+                          className="h-8 text-xs text-teal-800 hover:text-teal-900 hover:bg-teal-50"
+                        >
+                          <Eye className="h-3.5 w-3.5 mr-1" />
+                          Ver Detalhes
+                        </Button>
+                      </td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
           </table>
@@ -315,14 +360,21 @@ export default function Leads() {
           {selectedLead && (
             <div className="space-y-6">
               <SheetHeader className="text-left space-y-1 border-b border-slate-100 pb-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <Badge
                     variant="outline"
                     className="font-mono text-[11px] text-teal-800 bg-teal-50 border-teal-200"
                   >
                     Lead ID: {selectedLead.id}
                   </Badge>
-                  {getEstagioBadge(selectedLead.estagio_do_lead)}
+                  <div className="flex items-center gap-2">
+                    {leadMeetingsMap.get(normalizeEmail(selectedLead.email)) && (
+                      <LeadMeetingBadge
+                        meetingInfo={leadMeetingsMap.get(normalizeEmail(selectedLead.email))}
+                      />
+                    )}
+                    {getEstagioBadge(selectedLead.estagio_do_lead)}
+                  </div>
                 </div>
                 <SheetTitle className="text-xl font-bold text-slate-900">
                   {selectedLead.nome}
@@ -368,6 +420,43 @@ export default function Leads() {
                   )}
                 </div>
               </div>
+
+              {/* Reunião Vinculada (se existir) */}
+              {leadMeetingsMap.get(normalizeEmail(selectedLead.email)) &&
+                (() => {
+                  const info = leadMeetingsMap.get(normalizeEmail(selectedLead.email))!
+                  const m = info.meeting
+                  return (
+                    <div className="p-4 rounded-lg bg-teal-50/70 border border-teal-200 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-teal-900 flex items-center gap-1.5">
+                          <Calendar className="h-4 w-4 text-teal-700" />
+                          Reunião no Funil de Conversão:
+                        </span>
+                        <LeadMeetingBadge meetingInfo={info} showDate={false} />
+                      </div>
+                      <div className="text-xs text-teal-950 space-y-1">
+                        <div className="font-semibold text-sm text-slate-900">{m.assunto}</div>
+                        <div className="flex items-center gap-2 text-teal-800 font-mono text-[11px]">
+                          <span>
+                            Data/Hora:{' '}
+                            <strong>{new Date(m.data_hora).toLocaleString('pt-BR')}</strong>
+                          </span>
+                          {info.isFuture && (
+                            <span className="bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded font-sans text-[10px] font-medium">
+                              Futura
+                            </span>
+                          )}
+                        </div>
+                        {m.observacoes && (
+                          <p className="text-slate-600 text-[11px] pt-1 italic">
+                            "{m.observacoes}"
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
 
               {/* Informações de Contato */}
               <div className="space-y-3">
