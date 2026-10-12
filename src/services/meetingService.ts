@@ -1,5 +1,5 @@
 import pb from '@/lib/pocketbase/client'
-import type { MeetingRecord } from '@/types/integration'
+import type { MeetingRecord, StatusMeeting } from '@/types/integration'
 
 export interface GetMeetingsParams {
   status?: string
@@ -42,6 +42,15 @@ export const meetingService = {
   async getAllMeetings() {
     return await pb.collection<MeetingRecord>('meetings').getFullList({
       sort: '+data_hora',
+    })
+  },
+
+  /**
+   * Atualiza exclusivamente o status de uma reunião
+   */
+  async updateStatus(id: string, status: StatusMeeting) {
+    return await pb.collection<MeetingRecord>('meetings').update(id, {
+      status,
     })
   },
 }

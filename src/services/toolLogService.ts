@@ -7,6 +7,7 @@ export const toolLogService = {
     perPage?: number
     resultado?: string
     ferramenta?: string
+    createdGte?: string
   }) {
     const page = params?.page || 1
     const perPage = params?.perPage || 20
@@ -20,9 +21,29 @@ export const toolLogService = {
       filters.push(`ferramenta = '${params.ferramenta}'`)
     }
 
+    if (params?.createdGte) {
+      filters.push(`created >= '${params.createdGte}'`)
+    }
+
     const filterString = filters.join(' && ')
 
     return await pb.collection<ToolLogRecord>('tool_logs').getList(page, perPage, {
+      filter: filterString || undefined,
+      sort: '-created',
+    })
+  },
+
+  /**
+   * Busca logs para computar métricas consolidadas
+   */
+  async getLogsForMetrics(params?: { createdGte?: string }) {
+    const filters: string[] = []
+    if (params?.createdGte) {
+      filters.push(`created >= '${params.createdGte}'`)
+    }
+    const filterString = filters.join(' && ')
+
+    return await pb.collection<ToolLogRecord>('tool_logs').getFullList({
       filter: filterString || undefined,
       sort: '-created',
     })

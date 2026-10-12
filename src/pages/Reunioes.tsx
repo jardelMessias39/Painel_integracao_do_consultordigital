@@ -18,6 +18,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Info,
+  AlertTriangle,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -37,6 +38,16 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { meetingService } from '@/services/meetingService'
 import { useRealtime } from '@/hooks/use-realtime'
@@ -54,6 +65,10 @@ export default function Reunioes() {
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalItems, setTotalItems] = useState(0)
+
+  // Controle de alteração de status
+  const [updatingId, setUpdatingId] = useState<string | null>(null)
+  const [cancelTargetMeeting, setCancelTargetMeeting] = useState<MeetingRecord | null>(null)
 
   const fetchMeetings = useCallback(async () => {
     try {
@@ -149,6 +164,55 @@ export default function Reunioes() {
             {status}
           </span>
         )
+    }
+  }
+
+  const handleUpdateStatus = async (meeting: MeetingRecord, newStatus: StatusMeeting) => {
+    if (meeting.status === newStatus) return
+
+    // Se estiver mudando para cancelada, pedir confirmação leve
+    if (newStatus === 'cancelada') {
+      setCancelTargetMeeting(meeting)
+      return
+    }
+
+    await executeStatusUpdate(meeting.id, newStatus)
+  }
+
+  const executeStatusUpdate = async (id: string, newStatus: StatusMeeting) => {
+    try {
+      setUpdatingId(id)
+      const updated = await meetingService.updateStatus(id, newStatus)
+
+      // Atualiza estado local imediatamente
+      setMeetings((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, status: newStatus, updated: updated.updated } : m)),
+      )
+      if (selectedMeeting && selectedMeeting.id === id) {
+        setSelectedMeeting((prev) => (prev ? { ...prev, status: newStatus } : null))
+      }
+
+      const statusLabels: Record<StatusMeeting, string> = {
+        pendente: 'Pendente',
+        confirmada: 'Confirmada',
+        realizada: 'Realizada',
+        cancelada: 'Cancelada',
+      }
+
+      toast({
+        title: 'Status atualizado',
+        description: `Reunião marcada como "${statusLabels[newStatus]}".`,
+      })
+    } catch (err: unknown) {
+      console.error('Erro ao atualizar status da reunião:', err)
+      const msg = err instanceof Error ? err.message : 'Falha ao comunicar com o banco de dados.'
+      toast({
+        title: 'Erro ao atualizar status',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setUpdatingId(null)
     }
   }
 
@@ -348,9 +412,57 @@ export default function Reunioes() {
                         </p>
                       </td>
 
-                      {/* Status */}
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        {getStatusBadge(meeting.status)}
+                      {/* Status + Ação rápida inline */}
+                      <td
+                        className="py-3 px-4 whitespace-nowrap"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Select
+                            value={meeting.status}
+                            disabled={updatingId === meeting.id}
+                            onValueChange={(val) =>
+                              handleUpdateStatus(meeting, val as StatusMeeting)
+                            }
+                          >
+                            <SelectTrigger className="h-7 text-xs border-slate-200 w-[130px] bg-white font-medium">
+                              {updatingId === meeting.id ? (
+                                <span className="flex items-center gap-1.5 text-slate-500">
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                  Salvando...
+                                </span>
+                              ) : (
+                                <SelectValue>{getStatusBadge(meeting.status)}</SelectValue>
+                              )}
+                            </SelectTrigger>
+                            <SelectContent onClick={(e) => e.stopPropagation()}>
+                              <SelectItem value="pendente">
+                                <span className="flex items-center gap-1.5 text-xs text-amber-700">
+                                  <CalendarClock className="h-3 w-3 text-amber-600" />
+                                  Pendente
+                                </span>
+                              </SelectItem>
+                              <SelectItem value="confirmada">
+                                <span className="flex items-center gap-1.5 text-xs text-emerald-700">
+                                  <CalendarCheck className="h-3 w-3 text-emerald-600" />
+                                  Confirmada
+                                </span>
+                              </SelectItem>
+                              <SelectItem value="realizada">
+                                <span className="flex items-center gap-1.5 text-xs text-blue-700">
+                                  <CheckCircle2 className="h-3 w-3 text-blue-600" />
+                                  Realizada
+                                </span>
+                              </SelectItem>
+                              <SelectItem value="cancelada">
+                                <span className="flex items-center gap-1.5 text-xs text-red-700">
+                                  <CalendarX className="h-3 w-3 text-red-600" />
+                                  Cancelada
+                                </span>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </td>
 
                       {/* Observações truncadas com Tooltip */}
@@ -442,7 +554,7 @@ export default function Reunioes() {
                     variant="outline"
                     className="font-mono text-[11px] text-teal-800 bg-teal-50 border-teal-200"
                   >
-                    Meeting ID: {selectedMeeting.id}
+                    ID: {selectedMeeting.id}
                   </Badge>
                   {getStatusBadge(selectedMeeting.status)}
                 </div>
@@ -454,6 +566,86 @@ export default function Reunioes() {
                   {selectedMeeting.empresa} • {selectedMeeting.nome}
                 </SheetDescription>
               </SheetHeader>
+
+              {/* Card de Gestão de Status Operacional */}
+              <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                    <Clock className="h-4 w-4 text-teal-700" />
+                    Alterar Status da Reunião
+                  </span>
+                  {updatingId === selectedMeeting.id && (
+                    <span className="text-[11px] text-teal-700 flex items-center gap-1 font-medium">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Atualizando...
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <Button
+                    type="button"
+                    variant={selectedMeeting.status === 'pendente' ? 'default' : 'outline'}
+                    size="sm"
+                    disabled={updatingId === selectedMeeting.id}
+                    onClick={() => handleUpdateStatus(selectedMeeting, 'pendente')}
+                    className={`h-9 text-xs justify-center ${
+                      selectedMeeting.status === 'pendente'
+                        ? 'bg-amber-600 hover:bg-amber-700 text-white border-amber-600'
+                        : 'border-slate-200 hover:border-amber-300 hover:text-amber-800 text-slate-700'
+                    }`}
+                  >
+                    <CalendarClock className="h-3.5 w-3.5 mr-1" />
+                    Pendente
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant={selectedMeeting.status === 'confirmada' ? 'default' : 'outline'}
+                    size="sm"
+                    disabled={updatingId === selectedMeeting.id}
+                    onClick={() => handleUpdateStatus(selectedMeeting, 'confirmada')}
+                    className={`h-9 text-xs justify-center ${
+                      selectedMeeting.status === 'confirmada'
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600'
+                        : 'border-slate-200 hover:border-emerald-300 hover:text-emerald-800 text-slate-700'
+                    }`}
+                  >
+                    <CalendarCheck className="h-3.5 w-3.5 mr-1" />
+                    Confirmada
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant={selectedMeeting.status === 'realizada' ? 'default' : 'outline'}
+                    size="sm"
+                    disabled={updatingId === selectedMeeting.id}
+                    onClick={() => handleUpdateStatus(selectedMeeting, 'realizada')}
+                    className={`h-9 text-xs justify-center ${
+                      selectedMeeting.status === 'realizada'
+                        ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600'
+                        : 'border-slate-200 hover:border-blue-300 hover:text-blue-800 text-slate-700'
+                    }`}
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                    Realizada
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant={selectedMeeting.status === 'cancelada' ? 'default' : 'outline'}
+                    size="sm"
+                    disabled={updatingId === selectedMeeting.id}
+                    onClick={() => handleUpdateStatus(selectedMeeting, 'cancelada')}
+                    className={`h-9 text-xs justify-center ${
+                      selectedMeeting.status === 'cancelada'
+                        ? 'bg-red-600 hover:bg-red-700 text-white border-red-600'
+                        : 'border-slate-200 hover:border-red-300 hover:text-red-800 text-slate-700'
+                    }`}
+                  >
+                    <CalendarX className="h-3.5 w-3.5 mr-1" />
+                    Cancelada
+                  </Button>
+                </div>
+              </div>
 
               {/* Data e Horário em Destaque */}
               <div className="p-4 rounded-lg bg-teal-50/70 border border-teal-200 space-y-1">
@@ -545,6 +737,49 @@ export default function Reunioes() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Confirmação de Cancelamento de Reunião */}
+      <AlertDialog
+        open={!!cancelTargetMeeting}
+        onOpenChange={(open) => !open && setCancelTargetMeeting(null)}
+      >
+        <AlertDialogContent className="bg-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-slate-900">
+              <AlertTriangle className="h-5 w-5 text-red-600" />
+              Cancelar esta reunião?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-slate-600 space-y-2">
+              <p>
+                A reunião com <strong>{cancelTargetMeeting?.nome}</strong> (
+                {cancelTargetMeeting?.empresa}) agendada para{' '}
+                <strong>
+                  {cancelTargetMeeting ? formatDateTime(cancelTargetMeeting.data_hora) : ''}
+                </strong>{' '}
+                será marcada como <strong>Cancelada</strong>.
+              </p>
+              <p className="text-slate-500">
+                O selo de reunião associado a este lead na tela de Leads não terá mais prioridade de
+                destaque e a reunião será exibida com status vermelho.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="text-xs">Voltar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white text-xs"
+              onClick={() => {
+                if (cancelTargetMeeting) {
+                  executeStatusUpdate(cancelTargetMeeting.id, 'cancelada')
+                  setCancelTargetMeeting(null)
+                }
+              }}
+            >
+              Confirmar Cancelamento
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
