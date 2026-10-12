@@ -8,6 +8,7 @@ import Layout from '@/components/Layout'
 
 import Index from '@/pages/Index'
 import Leads from '@/pages/Leads'
+import Reunioes from '@/pages/Reunioes'
 import Logs from '@/pages/Logs'
 import Documentacao from '@/pages/Documentacao'
 import Configuracoes from '@/pages/Configuracoes'
@@ -33,6 +34,7 @@ const App = () => (
             <Route element={<Layout />}>
               <Route path="/" element={<Index />} />
               <Route path="/leads" element={<Leads />} />
+              <Route path="/reunioes" element={<Reunioes />} />
               <Route path="/logs" element={<Logs />} />
               <Route path="/documentacao" element={<Documentacao />} />
               <Route path="/configuracoes" element={<Configuracoes />} />

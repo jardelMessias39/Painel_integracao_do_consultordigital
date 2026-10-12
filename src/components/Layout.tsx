@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import {
   LayoutDashboard,
   UserCheck,
+  Calendar,
   Activity,
   FileCode2,
   Settings,
@@ -41,6 +42,11 @@ const navItems = [
     icon: UserCheck,
   },
   {
+    to: '/reunioes',
+    label: 'Reuniões',
+    icon: Calendar,
+  },
+  {
     to: '/logs',
     label: 'Logs',
     icon: Activity,
@@ -71,6 +77,7 @@ export default function Layout() {
   const getPageTitle = () => {
     if (location.pathname === '/') return 'Visão Geral da Camada'
     if (location.pathname.startsWith('/leads')) return 'Leads do Consultor'
+    if (location.pathname.startsWith('/reunioes')) return 'Reuniões'
     if (location.pathname.startsWith('/logs')) return 'Logs de Auditoria'
     if (location.pathname.startsWith('/documentacao')) return 'Documentação da API v1'
     if (location.pathname.startsWith('/configuracoes')) return 'Configurações e Segurança'
