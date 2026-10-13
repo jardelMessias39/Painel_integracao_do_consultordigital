@@ -29,37 +29,44 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { INTEGRATION_CONFIG } from '@/services/toolRegistry'
+import { useGlobalRealtimeNotifications } from '@/hooks/use-global-realtime-notifications'
 
 const navItems = [
   {
     to: '/',
     label: 'Visão Geral',
     icon: LayoutDashboard,
+    badgeKey: null,
   },
   {
     to: '/leads',
     label: 'Leads',
     icon: UserCheck,
+    badgeKey: 'leads' as const,
   },
   {
     to: '/reunioes',
     label: 'Reuniões',
     icon: Calendar,
+    badgeKey: 'meetings' as const,
   },
   {
     to: '/logs',
     label: 'Logs',
     icon: Activity,
+    badgeKey: null,
   },
   {
     to: '/documentacao',
     label: 'Documentação',
     icon: FileCode2,
+    badgeKey: null,
   },
   {
     to: '/configuracoes',
     label: 'Configurações',
     icon: Settings,
+    badgeKey: null,
   },
 ]
 
@@ -68,6 +75,15 @@ export default function Layout() {
   const navigate = useNavigate()
   const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  // Notificações globais em tempo real (toasts) e contadores de itens não vistos
+  const { unreadLeadsCount, unreadMeetingsCount } = useGlobalRealtimeNotifications()
+
+  const getUnreadCount = (key: 'leads' | 'meetings' | null) => {
+    if (key === 'leads') return unreadLeadsCount
+    if (key === 'meetings') return unreadMeetingsCount
+    return 0
+  }
 
   const handleLogout = () => {
     logout()
@@ -130,18 +146,34 @@ export default function Layout() {
           {navItems.map((item) => {
             const Icon = item.icon
             const isActive = location.pathname === item.to
+            const unreadCount = getUnreadCount(item.badgeKey)
+
             return (
               <NavLink
                 key={item.to}
                 to={item.to}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                className={`flex items-center justify-between px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${
                   isActive
                     ? 'bg-[#0F766E] text-white shadow-xs'
                     : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                 }`}
               >
-                <Icon className={`h-4 w-4 ${isActive ? 'text-white' : 'text-slate-500'}`} />
-                {item.label}
+                <div className="flex items-center gap-3 min-w-0">
+                  <Icon
+                    className={`h-4 w-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-500'}`}
+                  />
+                  <span className="truncate">{item.label}</span>
+                </div>
+                {unreadCount > 0 && (
+                  <span
+                    className={`ml-2 inline-flex items-center justify-center px-1.5 py-0.5 text-[11px] font-bold rounded-full min-w-[20px] transition-transform animate-pulse-subtle ${
+                      isActive ? 'bg-white text-teal-800' : 'bg-teal-600 text-white'
+                    }`}
+                    title={`${unreadCount} ${item.label.toLowerCase()} não visto(s)`}
+                  >
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
               </NavLink>
             )
           })}
@@ -280,17 +312,30 @@ export default function Layout() {
             {navItems.map((item) => {
               const Icon = item.icon
               const isActive = location.pathname === item.to
+              const unreadCount = getUnreadCount(item.badgeKey)
+
               return (
                 <NavLink
                   key={item.to}
                   to={item.to}
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${
+                  className={`flex items-center justify-between px-3 py-2 rounded-md text-sm font-medium ${
                     isActive ? 'bg-[#0F766E] text-white' : 'text-slate-600 hover:bg-slate-100'
                   }`}
                 >
-                  <Icon className="h-4 w-4" />
-                  {item.label}
+                  <div className="flex items-center gap-3">
+                    <Icon className="h-4 w-4" />
+                    <span>{item.label}</span>
+                  </div>
+                  {unreadCount > 0 && (
+                    <span
+                      className={`inline-flex items-center justify-center px-1.5 py-0.5 text-[11px] font-bold rounded-full min-w-[20px] ${
+                        isActive ? 'bg-white text-teal-800' : 'bg-teal-600 text-white'
+                      }`}
+                    >
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
                 </NavLink>
               )
             })}
@@ -315,16 +360,28 @@ export default function Layout() {
         {navItems.map((item) => {
           const Icon = item.icon
           const isActive = location.pathname === item.to
+          const unreadCount = getUnreadCount(item.badgeKey)
+
           return (
             <NavLink
               key={item.to}
               to={item.to}
-              className={`flex flex-col items-center justify-center flex-1 py-1 text-[11px] font-medium transition-colors ${
+              className={`relative flex flex-col items-center justify-center flex-1 py-1 text-[11px] font-medium transition-colors ${
                 isActive ? 'text-[#0F766E]' : 'text-slate-500 hover:text-slate-900'
               }`}
             >
-              <Icon className="h-4 w-4 mb-0.5" />
-              <span>{item.label}</span>
+              <div className="relative">
+                <Icon className="h-4 w-4 mb-0.5" />
+                {unreadCount > 0 && (
+                  <span
+                    className="absolute -top-1.5 -right-2.5 inline-flex items-center justify-center px-1 py-0.2 text-[9px] font-bold rounded-full min-w-[15px] h-[15px] bg-teal-600 text-white shadow-xs"
+                    title={`${unreadCount} ${item.label.toLowerCase()} não visto(s)`}
+                  >
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </div>
+              <span className="truncate max-w-[56px] text-center">{item.label}</span>
             </NavLink>
           )
         })}
