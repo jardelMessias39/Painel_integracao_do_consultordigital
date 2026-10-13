@@ -8,6 +8,7 @@ const ROUTE_SEND_EMAIL = '/backend/v1/tools/send_email'
 const ROUTE_LIST_MEETINGS = '/backend/v1/tools/list_meetings'
 const ROUTE_LIST_LEADS = '/backend/v1/tools/list_leads'
 const ROUTE_GET_LEAD = '/backend/v1/tools/get_lead'
+const ROUTE_UPDATE_LEAD_STAGE = '/backend/v1/tools/update_lead_stage'
 const ROUTE_TOOLS_REGISTRY = '/backend/v1/tools'
 const ROUTE_MCP_ADAPTER = '/backend/v1/mcp'
 
@@ -17,6 +18,7 @@ const PUBLIC_SEND_EMAIL_PATH = `${ROUTE_API_PREFIX}${ROUTE_SEND_EMAIL}`
 const PUBLIC_LIST_MEETINGS_PATH = `${ROUTE_API_PREFIX}${ROUTE_LIST_MEETINGS}`
 const PUBLIC_LIST_LEADS_PATH = `${ROUTE_API_PREFIX}${ROUTE_LIST_LEADS}`
 const PUBLIC_GET_LEAD_PATH = `${ROUTE_API_PREFIX}${ROUTE_GET_LEAD}`
+const PUBLIC_UPDATE_LEAD_STAGE_PATH = `${ROUTE_API_PREFIX}${ROUTE_UPDATE_LEAD_STAGE}`
 const PUBLIC_TOOLS_REGISTRY_PATH = `${ROUTE_API_PREFIX}${ROUTE_TOOLS_REGISTRY}`
 const PUBLIC_MCP_ADAPTER_PATH = `${ROUTE_API_PREFIX}${ROUTE_MCP_ADAPTER}`
 
@@ -76,6 +78,15 @@ export const toolRegistryList: ToolDefinition[] = [
     status: 'ativa',
   },
   {
+    nome: 'update_lead_stage',
+    descricao:
+      'Atualiza o estágio comercial de um lead (novo, qualificado, proposta, descartado) por lead_id ou e-mail com idempotência natural.',
+    escopo: 'leads:write',
+    endpoint: PUBLIC_UPDATE_LEAD_STAGE_PATH,
+    metodo: 'POST',
+    status: 'ativa',
+  },
+  {
     nome: 'tools_registry',
     descricao:
       'Índice canônico de descoberta de ferramentas disponíveis na Camada de Integração para os chamadores.',
@@ -96,7 +107,7 @@ export const toolRegistryList: ToolDefinition[] = [
 ]
 
 export const INTEGRATION_CONFIG = {
-  version: 'v2.5.0',
+  version: 'v2.6.0',
   // Domínio público do Skip Cloud e caminhos públicos roteados via /api/*
   publicDomain: 'https://integracao-de-ferramentas-do-consultor-e38b8' + '.goskip.app',
   publicEndpointPath: PUBLIC_CREATE_LEAD_PATH,
@@ -105,6 +116,7 @@ export const INTEGRATION_CONFIG = {
   publicListMeetingsPath: PUBLIC_LIST_MEETINGS_PATH,
   publicListLeadsPath: PUBLIC_LIST_LEADS_PATH,
   publicGetLeadPath: PUBLIC_GET_LEAD_PATH,
+  publicUpdateLeadStagePath: PUBLIC_UPDATE_LEAD_STAGE_PATH,
   publicToolsRegistryPath: PUBLIC_TOOLS_REGISTRY_PATH,
   publicMcpAdapterPath: PUBLIC_MCP_ADAPTER_PATH,
   // URL interna/direta ao PocketBase
@@ -117,6 +129,7 @@ export const INTEGRATION_CONFIG = {
   internalListMeetingsPath: ROUTE_LIST_MEETINGS,
   internalListLeadsPath: ROUTE_LIST_LEADS,
   internalGetLeadPath: ROUTE_GET_LEAD,
+  internalUpdateLeadStagePath: ROUTE_UPDATE_LEAD_STAGE,
   internalToolsRegistryPath: ROUTE_TOOLS_REGISTRY,
   internalMcpAdapterPath: ROUTE_MCP_ADAPTER,
   endpointPath: PUBLIC_CREATE_LEAD_PATH,

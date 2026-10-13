@@ -111,6 +111,18 @@
         rate_limit: '120 req/min',
       },
       {
+        nome: 'update_lead_stage',
+        metodo: 'POST',
+        caminho: '/v1/tools/update_lead_stage',
+        versao: 'v1',
+        descricao:
+          'Atualiza o estágio comercial de um lead (novo, qualificado, proposta, descartado) por lead_id ou e-mail',
+        campos_obrigatorios: ['estagio_do_lead'],
+        campos_opcionais: ['lead_id', 'email', 'observacao'],
+        idempotencia: 'natural (mesmo estágio devolve atualizado: true sem erro)',
+        rate_limit: '120 req/min',
+      },
+      {
         nome: 'mcp_adapter',
         metodo: 'POST',
         caminho: '/v1/mcp',

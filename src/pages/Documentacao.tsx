@@ -50,6 +50,8 @@ const SECTIONS: NavSection[] = [
   { id: 'list-meetings', label: 'list_meetings', badge: 'GET' },
   { id: 'list-leads', label: 'list_leads', badge: 'GET' },
   { id: 'get-lead', label: 'get_lead', badge: 'GET' },
+  { id: 'update-lead-stage', label: 'update_lead_stage', badge: 'POST' },
+  { id: 'guia-integracao-agente-mcp', label: 'Guia do Agente (MCP)', badge: 'Agente' },
   { id: 'adaptador-mcp', label: 'Adaptador MCP', badge: 'JSON-RPC' },
   { id: 'envelope-respostas', label: 'Envelope Padrão' },
   { id: 'erros-codigos', label: 'Erros e Códigos' },
@@ -71,6 +73,7 @@ export default function Documentacao() {
   const canonicalListMeetingsUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicListMeetingsPath}`
   const canonicalListLeadsUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicListLeadsPath}`
   const canonicalGetLeadUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicGetLeadPath}`
+  const canonicalUpdateLeadStageUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicUpdateLeadStagePath}`
   const canonicalToolsRegistryUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicToolsRegistryPath}`
   const canonicalMcpUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicMcpAdapterPath}`
 
@@ -81,6 +84,7 @@ export default function Documentacao() {
   const internalListMeetingsUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalListMeetingsPath}`
   const internalListLeadsUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalListLeadsPath}`
   const internalGetLeadUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalGetLeadPath}`
+  const internalUpdateLeadStageUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalUpdateLeadStagePath}`
   const internalToolsRegistryUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalToolsRegistryPath}`
   const internalMcpUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalMcpAdapterPath}`
 
@@ -249,7 +253,7 @@ export default function Documentacao() {
     {
       ok: true,
       data: {
-        total: 8,
+        total: 9,
         tools: [
           {
             nome: 'create_lead',
@@ -333,6 +337,18 @@ export default function Documentacao() {
             campos_obrigatorios: [],
             campos_opcionais: ['id', 'email'],
             idempotencia: 'não aplicável (leitura)',
+            rate_limit: '120 req/min',
+          },
+          {
+            nome: 'update_lead_stage',
+            metodo: 'POST',
+            caminho: '/v1/tools/update_lead_stage',
+            versao: 'v1',
+            descricao:
+              'Atualiza o estágio comercial de um lead (novo, qualificado, proposta, descartado) por lead_id ou e-mail',
+            campos_obrigatorios: ['estagio_do_lead'],
+            campos_opcionais: ['lead_id', 'email', 'observacao'],
+            idempotencia: 'natural (mesmo estágio devolve atualizado: true sem erro)',
             rate_limit: '120 req/min',
           },
           {
@@ -464,6 +480,248 @@ export default function Documentacao() {
     null,
     2,
   )
+
+  const updateLeadStagePayload = JSON.stringify(
+    {
+      lead_id: 'ljcccduj00419re',
+      estagio_do_lead: 'qualificado',
+      observacao: 'Lead demonstrou interesse após qualificação pelo Consultor Digital',
+    },
+    null,
+    2,
+  )
+
+  const updateLeadStageSuccess200 = JSON.stringify(
+    {
+      ok: true,
+      data: {
+        atualizado: true,
+        lead_id: 'ljcccduj00419re',
+        estagio_anterior: 'novo',
+        estagio_novo: 'qualificado',
+      },
+    },
+    null,
+    2,
+  )
+
+  const updateLeadStageIdempotent200 = JSON.stringify(
+    {
+      ok: true,
+      data: {
+        atualizado: true,
+        lead_id: 'ljcccduj00419re',
+        estagio_anterior: 'qualificado',
+        estagio_novo: 'qualificado',
+      },
+    },
+    null,
+    2,
+  )
+
+  const updateLeadStageNotFound200 = JSON.stringify(
+    {
+      ok: true,
+      data: {
+        atualizado: false,
+        motivo: 'lead_nao_encontrado',
+      },
+    },
+    null,
+    2,
+  )
+
+  const curlUpdateLeadStageById = `curl -X POST "${canonicalUpdateLeadStageUrl}" \\
+  -H "Content-Type: application/json" \\
+  -H "X-API-Key: sk-live_********************" \\
+  -d '${updateLeadStagePayload}'`
+
+  const curlUpdateLeadStageByEmail = `curl -X POST "${canonicalUpdateLeadStageUrl}" \\
+  -H "Content-Type: application/json" \\
+  -H "X-API-Key: sk-live_********************" \\
+  -d '{
+  "email": "carlos.silva@logitech.com.br",
+  "estagio_do_lead": "proposta"
+}'`
+
+  const pythonMcpAgentClientCode = `"""
+Cliente MCP JSON-RPC 2.0 funcional para integração com a Camada de Integração
+Pronto para execução no backend FastAPI do Render (httpx ou requests).
+Nunca exponha a API key no frontend ou nos prompts do LLM.
+"""
+
+import os
+import json
+import logging
+from typing import Any, Dict, List, Optional
+import httpx
+
+logger = logging.getLogger("mcp_agent_client")
+
+class ConsultorMcpClient:
+    """
+    Cliente de integração MCP (Model Context Protocol) sobre transporte HTTP JSON-RPC 2.0.
+    Consome o endpoint /backend/v1/mcp ou /api/backend/v1/mcp com autenticação via header X-API-Key.
+    """
+
+    def __init__(
+        self,
+        endpoint_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        timeout: float = 15.0,
+    ):
+        # NUNCA hardcode a chave. Use sempre variável de ambiente segura no Render.
+        self.endpoint_url = endpoint_url or os.getenv(
+            "MCP_ENDPOINT_URL",
+            "${canonicalMcpUrl}",
+        )
+        self.api_key = api_key or os.getenv("CONSULTOR_API_KEY", "")
+        self.timeout = timeout
+        self._request_counter = 0
+
+        if not self.api_key:
+            logger.warning(
+                "[ALERTA SEGURANÇA] CONSULTOR_API_KEY não definida no ambiente. "
+                "Chamadas falharão com HTTP 401 UNAUTHORIZED."
+            )
+
+    def _next_id(self) -> int:
+        self._request_counter += 1
+        return self._request_counter
+
+    def _post_rpc(self, method: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Executa uma requisição JSON-RPC 2.0 síncrona."""
+        payload = {
+            "jsonrpc": "2.0",
+            "id": self._next_id(),
+            "method": method,
+            "params": params or {},
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "X-API-Key": self.api_key,
+        }
+
+        with httpx.Client(timeout=self.timeout) as client:
+            resp = client.post(self.endpoint_url, json=payload, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+
+        if "error" in data:
+            err = data["error"]
+            raise RuntimeError(
+                f"Erro JSON-RPC [{err.get('code')}]: {err.get('message')} - {err.get('data')}"
+            )
+
+        return data.get("result", {})
+
+    def initialize(self) -> Dict[str, Any]:
+        """Executa o handshake inicial MCP e retorna capacidades e metadados."""
+        return self._post_rpc(
+            "initialize",
+            {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "render-fastapi-agent", "version": "1.0.0"},
+            },
+        )
+
+    def list_tools(self) -> List[Dict[str, Any]]:
+        """Lista todas as tools disponíveis com seus schemas (inputSchema)."""
+        result = self._post_rpc("tools/list", {})
+        return result.get("tools", [])
+
+    def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Executa uma tool específica via tools/call.
+        Devolve o envelope canônico com { ok, data } ou { ok: false, error }.
+        Trata isError sem quebrar a execução do agente.
+        """
+        result = self._post_rpc("tools/call", {"name": tool_name, "arguments": arguments})
+
+        # O adaptador MCP fornece _canonicalEnvelope e content[0].text
+        if "_canonicalEnvelope" in result:
+            return result["_canonicalEnvelope"]
+
+        content = result.get("content", [])
+        if content and content[0].get("type") == "text":
+            try:
+                return json.loads(content[0]["text"])
+            except Exception:
+                pass
+
+        return {"ok": not result.get("isError", False), "data": result}
+
+
+# =========================================================================
+# Exemplo de Uso e Loop de Execução do Agente no FastAPI / Render
+# =========================================================================
+if __name__ == "__main__":
+    # 1. Instancia o cliente (lê CONSULTOR_API_KEY das variáveis de ambiente)
+    client = ConsultorMcpClient()
+
+    # 2. Handshake e Descoberta de Ferramentas
+    init_res = client.initialize()
+    print("Servidor MCP conectado:", init_res.get("serverInfo"))
+
+    tools = client.list_tools()
+    print(f"Tools descobertas dinamicamente ({len(tools)}):", [t["name"] for t in tools])
+
+    # 3. Exemplo 1: Leitura de Lead (get_lead)
+    lead_res = client.call_tool("get_lead", {"email": "carlos.silva@logitech.com.br"})
+    print("\\nResultado get_lead:", lead_res)
+
+    # 4. Exemplo 2: Criação de Lead (create_lead) com Idempotência
+    novo_lead = client.call_tool(
+        "create_lead",
+        {
+            "nome": "Carlos Silva",
+            "empresa": "LogiTech Transportes",
+            "email": "carlos.silva@logitech.com.br",
+            "telefone": "(11) 98765-4321",
+            "necessidade_identificada": "Automação no atendimento de motoristas parceiros",
+            "estagio_do_lead": "novo",
+        },
+    )
+    print("\\nResultado create_lead:", novo_lead)
+
+    # 5. Exemplo 3: Atualização de Estágio Comercial (update_lead_stage)
+    lead_id = novo_lead.get("data", {}).get("lead_id")
+    if lead_id:
+        update_res = client.call_tool(
+            "update_lead_stage",
+            {
+                "lead_id": lead_id,
+                "estagio_do_lead": "qualificado",
+                "observacao": "Qualificado após demonstração de escopo",
+            },
+        )
+        print("\\nResultado update_lead_stage:", update_res)
+`
+
+  const llmFunctionCallingMappingCode = `// Mapeamento automático das tools MCP (tools/list) para o formato OpenAI / Anthropic Function Calling
+// Executado no orquestrador do chatbot no Render antes de chamar a API do modelo de linguagem.
+
+import type { RegisteredToolSummary } from '@/types/integration';
+
+export function mapMcpToolsToOpenAITools(mcpToolsList: any[]) {
+  return mcpToolsList.map((tool) => ({
+    type: 'function' as const,
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.inputSchema, // O inputSchema do MCP já é um JSON Schema compatível!
+    },
+  }));
+}
+
+// Diretrizes do Loop de Agente Seguro:
+// 1. Limite estrito de passos (maxSteps = 5 por turno de conversa) para evitar loops infinitos.
+// 2. Se a chamada retornar isError ou ok: false, repassar o erro estruturado para o LLM replanejar
+//    ou solicitar esclarecimento ao usuário, NUNCA levantar exceção que derrube o servidor.
+// 3. A chave de API permanece exclusivamente nas variáveis de ambiente do backend Render,
+//    NUNCA injetada nos prompts de sistema (System Message) nem exposta ao cliente web.
+`
 
   const errorValidationError = JSON.stringify(
     {
@@ -651,6 +909,24 @@ export default function Documentacao() {
                 id: { type: 'string' },
                 email: { type: 'string' },
               },
+            },
+          },
+          {
+            name: 'update_lead_stage',
+            description:
+              'Atualiza o estágio comercial de um lead existente (novo, qualificado, proposta, descartado) por lead_id ou e-mail com idempotência natural.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                lead_id: { type: 'string' },
+                email: { type: 'string' },
+                estagio_do_lead: {
+                  type: 'string',
+                  enum: ['novo', 'qualificado', 'proposta', 'descartado'],
+                },
+                observacao: { type: 'string' },
+              },
+              required: ['estagio_do_lead'],
             },
           },
         ],
@@ -2902,6 +3178,569 @@ def criar_lead(dados_lead):
               </Card>
             </section>
 
+            {/* SEÇÃO 4.4: ENDPOINT update_lead_stage (NOVO - V2 ESCRITA) */}
+            <section id="update-lead-stage" className="scroll-mt-20">
+              <Card className="border-slate-200 bg-white shadow-2xs">
+                <CardHeader className="pb-3 border-b border-slate-100">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-purple-600 text-white font-mono text-xs">POST</Badge>
+                      <CardTitle className="text-base sm:text-lg font-bold text-slate-900 font-mono">
+                        10. /update_lead_stage
+                      </CardTitle>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="border-purple-300 text-purple-800 bg-purple-50 text-xs w-fit"
+                    >
+                      Idempotência Natural (lead_id ou email)
+                    </Badge>
+                  </div>
+                  <CardDescription className="text-xs text-slate-500 mt-1">
+                    Atualiza exclusivamente o estágio comercial de um lead existente (novo,
+                    qualificado, proposta, descartado). Se já estiver no mesmo estágio, retorna
+                    sucesso estável sem erro.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-4 space-y-4">
+                  {/* Tabela de Campos */}
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide mb-2">
+                      Campos da Requisição (JSON Body)
+                    </h3>
+                    <div className="overflow-x-auto rounded-lg border border-slate-200">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-200 bg-slate-50/90 font-medium text-slate-600">
+                            <th className="py-2.5 px-3">Campo</th>
+                            <th className="py-2.5 px-3">Tipo</th>
+                            <th className="py-2.5 px-3">Obrigatoriedade</th>
+                            <th className="py-2.5 px-3">Regras / Descrição</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-sans">
+                          <tr>
+                            <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                              lead_id
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
+                            <td className="py-2.5 px-3">
+                              <Badge className="bg-slate-100 text-slate-700 border-slate-200 text-[10px]">
+                                Condicional
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600">
+                              ID do lead no PocketBase. Precede o e-mail se ambos forem fornecidos.
+                              Obrigatório informar <code className="font-mono">lead_id</code> OU{' '}
+                              <code className="font-mono">email</code>.
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                              email
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
+                            <td className="py-2.5 px-3">
+                              <Badge className="bg-slate-100 text-slate-700 border-slate-200 text-[10px]">
+                                Condicional
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600">
+                              E-mail do lead cadastrado. Utilizado para busca quando{' '}
+                              <code className="font-mono">lead_id</code> não for informado. Localiza
+                              o lead mais recente associado ao e-mail.
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                              estagio_do_lead
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-500">enum</td>
+                            <td className="py-2.5 px-3">
+                              <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px]">
+                                Obrigatório
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600">
+                              Novo estágio do lead. Valores válidos:{' '}
+                              <code className="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800 text-[11px]">
+                                &quot;novo&quot; | &quot;qualificado&quot; | &quot;proposta&quot; |
+                                &quot;descartado&quot;
+                              </code>
+                              .
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                              observacao
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-500">string</td>
+                            <td className="py-2.5 px-3">
+                              <Badge className="bg-slate-100 text-slate-700 border-slate-200 text-[10px]">
+                                Opcional
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600">
+                              Texto livre de até 500 caracteres para anotações contextuais internas
+                              (conforme LGPD, <strong>NÃO</strong> é gravado na tabela{' '}
+                              <code className="font-mono">tool_logs</code>).
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Detalhes de Comportamento e Idempotência */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                    <div className="p-3 rounded-lg border border-purple-100 bg-purple-50/60 text-xs text-purple-950 space-y-1.5">
+                      <div className="flex items-center gap-1.5 font-bold text-purple-900">
+                        <RefreshCw className="h-4 w-4 text-purple-700" />
+                        <span>Idempotência Natural</span>
+                      </div>
+                      <p className="text-slate-600 leading-relaxed text-xs">
+                        Se a ferramenta for chamada repetidamente com o mesmo estágio já gravado, o
+                        servidor responde <strong>HTTP 200</strong> com{' '}
+                        <code className="font-mono font-semibold">atualizado: true</code> e{' '}
+                        <code className="font-mono">estagio_anterior === estagio_novo</code> sem
+                        gerar erro.
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 space-y-1.5">
+                      <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                        <ShieldCheck className="h-4 w-4 text-[#0F766E]" />
+                        <span>Lead Não Encontrado (Sem Erro Falso)</span>
+                      </div>
+                      <p className="text-slate-600 leading-relaxed text-xs">
+                        Se o lead não for localizado pelo ID ou e-mail, a resposta retorna{' '}
+                        <strong>HTTP 200 OK</strong> com{' '}
+                        <code className="font-mono font-semibold">{`{ ok: true, data: { atualizado: false, motivo: "lead_nao_encontrado" } }`}</code>
+                        , mantendo estabilidade para o agente.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Abas com Exemplos de Request e Respostas */}
+                  <Tabs defaultValue="res200" className="w-full">
+                    <TabsList className="bg-slate-100 border border-slate-200 text-xs">
+                      <TabsTrigger value="res200" className="text-xs">
+                        200 Atualizado
+                      </TabsTrigger>
+                      <TabsTrigger value="resIdem" className="text-xs">
+                        200 Idempotente
+                      </TabsTrigger>
+                      <TabsTrigger value="resNotFound" className="text-xs">
+                        200 Não Encontrado
+                      </TabsTrigger>
+                      <TabsTrigger value="curlId" className="text-xs">
+                        cURL por ID
+                      </TabsTrigger>
+                      <TabsTrigger value="curlEmail" className="text-xs">
+                        cURL por E-mail
+                      </TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="res200">
+                      <div className="rounded-lg border border-purple-300 bg-slate-950 p-3 relative">
+                        <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-800">
+                          <Badge className="bg-purple-600 text-white font-mono text-[10px]">
+                            HTTP 200 OK (atualizado: true)
+                          </Badge>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              copyToClipboard(
+                                updateLeadStageSuccess200,
+                                'Resposta update_lead_stage 200',
+                              )
+                            }
+                            className="h-6 text-xs text-purple-400 hover:text-purple-300 hover:bg-slate-800"
+                          >
+                            {copiedSnippet === 'Resposta update_lead_stage 200' ? (
+                              <Check className="h-3 w-3 mr-1" />
+                            ) : (
+                              <Copy className="h-3 w-3 mr-1" />
+                            )}
+                            {copiedSnippet === 'Resposta update_lead_stage 200'
+                              ? 'Copiado!'
+                              : 'Copiar'}
+                          </Button>
+                        </div>
+                        <pre className="font-mono text-xs text-purple-300 overflow-x-auto whitespace-pre">
+                          {updateLeadStageSuccess200}
+                        </pre>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="resIdem">
+                      <div className="rounded-lg border border-teal-300 bg-slate-950 p-3 relative">
+                        <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-800">
+                          <Badge className="bg-teal-600 text-white font-mono text-[10px]">
+                            HTTP 200 OK (Idempotente)
+                          </Badge>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              copyToClipboard(
+                                updateLeadStageIdempotent200,
+                                'Resposta update_lead_stage idempotente',
+                              )
+                            }
+                            className="h-6 text-xs text-teal-400 hover:text-teal-300 hover:bg-slate-800"
+                          >
+                            {copiedSnippet === 'Resposta update_lead_stage idempotente' ? (
+                              <Check className="h-3 w-3 mr-1" />
+                            ) : (
+                              <Copy className="h-3 w-3 mr-1" />
+                            )}
+                            {copiedSnippet === 'Resposta update_lead_stage idempotente'
+                              ? 'Copiado!'
+                              : 'Copiar'}
+                          </Button>
+                        </div>
+                        <pre className="font-mono text-xs text-teal-300 overflow-x-auto whitespace-pre">
+                          {updateLeadStageIdempotent200}
+                        </pre>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="resNotFound">
+                      <div className="rounded-lg border border-slate-700 bg-slate-950 p-3 relative">
+                        <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-800">
+                          <Badge className="bg-slate-700 text-slate-200 font-mono text-[10px]">
+                            HTTP 200 OK (Não Encontrado)
+                          </Badge>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              copyToClipboard(
+                                updateLeadStageNotFound200,
+                                'Resposta update_lead_stage não encontrado',
+                              )
+                            }
+                            className="h-6 text-xs text-slate-400 hover:text-slate-300 hover:bg-slate-800"
+                          >
+                            {copiedSnippet === 'Resposta update_lead_stage não encontrado' ? (
+                              <Check className="h-3 w-3 mr-1" />
+                            ) : (
+                              <Copy className="h-3 w-3 mr-1" />
+                            )}
+                            {copiedSnippet === 'Resposta update_lead_stage não encontrado'
+                              ? 'Copiado!'
+                              : 'Copiar'}
+                          </Button>
+                        </div>
+                        <pre className="font-mono text-xs text-slate-300 overflow-x-auto whitespace-pre">
+                          {updateLeadStageNotFound200}
+                        </pre>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="curlId">
+                      <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 relative">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            copyToClipboard(
+                              curlUpdateLeadStageById,
+                              'cURL update_lead_stage por ID',
+                            )
+                          }
+                          className="absolute top-2 right-2 h-7 text-xs text-purple-400 hover:text-purple-300 hover:bg-slate-800"
+                        >
+                          {copiedSnippet === 'cURL update_lead_stage por ID' ? (
+                            <Check className="h-3.5 w-3.5 mr-1" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5 mr-1" />
+                          )}
+                          {copiedSnippet === 'cURL update_lead_stage por ID'
+                            ? 'Copiado!'
+                            : 'Copiar'}
+                        </Button>
+                        <pre className="font-mono text-xs text-slate-200 overflow-x-auto whitespace-pre pt-5 sm:pt-0">
+                          {curlUpdateLeadStageById}
+                        </pre>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="curlEmail">
+                      <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 relative">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            copyToClipboard(
+                              curlUpdateLeadStageByEmail,
+                              'cURL update_lead_stage por E-mail',
+                            )
+                          }
+                          className="absolute top-2 right-2 h-7 text-xs text-purple-400 hover:text-purple-300 hover:bg-slate-800"
+                        >
+                          {copiedSnippet === 'cURL update_lead_stage por E-mail' ? (
+                            <Check className="h-3.5 w-3.5 mr-1" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5 mr-1" />
+                          )}
+                          {copiedSnippet === 'cURL update_lead_stage por E-mail'
+                            ? 'Copiado!'
+                            : 'Copiar'}
+                        </Button>
+                        <pre className="font-mono text-xs text-slate-200 overflow-x-auto whitespace-pre pt-5 sm:pt-0">
+                          {curlUpdateLeadStageByEmail}
+                        </pre>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                </CardContent>
+              </Card>
+            </section>
+
+            {/* SEÇÃO 4.4.1: GUIA DE INTEGRAÇÃO DO AGENTE (CONSULTOR VIA MCP) */}
+            <section id="guia-integracao-agente-mcp" className="scroll-mt-20">
+              <Card className="border-teal-200 bg-white shadow-2xs">
+                <CardHeader className="pb-3 border-b border-teal-50">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-5 w-5 text-teal-700" />
+                      <CardTitle className="text-lg font-bold text-slate-900">
+                        11. Guia de Integração do Agente (Consultor via MCP)
+                      </CardTitle>
+                      <Badge className="bg-teal-700 text-white font-mono text-[10px]">
+                        FastAPI / Render
+                      </Badge>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="text-teal-800 border-teal-300 self-start sm:self-auto text-[11px]"
+                    >
+                      ADR-001: Autonomia &amp; Segurança
+                    </Badge>
+                  </div>
+                  <CardDescription className="text-xs text-slate-500">
+                    Arquitetura completa do loop de execução autônoma, credenciais seguras, cliente
+                    Python em JSON-RPC 2.0 e mapeamento de function-calling
+                  </CardDescription>
+                </CardHeader>
+
+                <CardContent className="space-y-5 pt-4 text-xs sm:text-sm text-slate-700">
+                  {/* (a) O Loop do Agente */}
+                  <div className="rounded-lg border border-teal-200 bg-teal-50/50 p-4 space-y-3">
+                    <h4 className="font-bold text-teal-950 text-xs flex items-center gap-1.5 uppercase tracking-wider">
+                      <RefreshCw className="h-4 w-4 text-teal-700" />
+                      (a) Ciclo de Vida do Loop do Agente Autônomo
+                    </h4>
+                    <p className="text-xs text-teal-900 leading-relaxed">
+                      O Consultor Digital opera em um ciclo contínuo e determinístico de 5 fases. A
+                      Camada de Integração apenas valida e executa as ferramentas solicitadas,
+                      deixando toda a autonomia de raciocínio no orquestrador do chatbot:
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 pt-1">
+                      <div className="p-2.5 bg-white rounded border border-teal-200 space-y-1">
+                        <span className="font-bold text-teal-900 font-mono text-[11px] block">
+                          1. Descobrir
+                        </span>
+                        <p className="text-slate-600 text-[11px]">
+                          Chama <code className="font-mono">tools/list</code> no MCP e introspecta o
+                          catálogo em tempo de execução sem redeploy.
+                        </p>
+                      </div>
+
+                      <div className="p-2.5 bg-white rounded border border-teal-200 space-y-1">
+                        <span className="font-bold text-teal-900 font-mono text-[11px] block">
+                          2. Mapear
+                        </span>
+                        <p className="text-slate-600 text-[11px]">
+                          Converte os schemas JSON Schema para o array de tools esperado pelo modelo
+                          (OpenAI / Claude).
+                        </p>
+                      </div>
+
+                      <div className="p-2.5 bg-white rounded border border-teal-200 space-y-1">
+                        <span className="font-bold text-teal-900 font-mono text-[11px] block">
+                          3. Decidir
+                        </span>
+                        <p className="text-slate-600 text-[11px]">
+                          O LLM raciocina sobre a conversa e emite uma ou mais chamadas
+                          (tool_calls).
+                        </p>
+                      </div>
+
+                      <div className="p-2.5 bg-white rounded border border-teal-200 space-y-1">
+                        <span className="font-bold text-teal-900 font-mono text-[11px] block">
+                          4. Executar
+                        </span>
+                        <p className="text-slate-600 text-[11px]">
+                          O cliente envia <code className="font-mono">tools/call</code> com
+                          autenticação <code className="font-mono">X-API-Key</code>.
+                        </p>
+                      </div>
+
+                      <div className="p-2.5 bg-white rounded border border-teal-200 space-y-1">
+                        <span className="font-bold text-teal-900 font-mono text-[11px] block">
+                          5. Consumir
+                        </span>
+                        <p className="text-slate-600 text-[11px]">
+                          Lê o resultado do envelope, alimenta o histórico do chat e responde ao
+                          usuário final.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* (b) Endpoint MCP e Autenticação */}
+                  <div className="space-y-2">
+                    <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider">
+                      (b) Endpoint MCP e Autenticação Server-to-Server
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50 space-y-2">
+                        <span className="text-[11px] font-bold text-slate-700 block uppercase">
+                          Endpoint MCP Canônico
+                        </span>
+                        <code className="font-mono text-xs text-slate-900 block bg-white p-2 rounded border border-slate-200 break-all select-all">
+                          {canonicalMcpUrl}
+                        </code>
+                        <p className="text-[11px] text-slate-500">
+                          Utiliza método HTTP <code className="font-mono font-bold">POST</code> com
+                          Content-Type <code className="font-mono">application/json</code>.
+                        </p>
+                      </div>
+
+                      <div className="p-3.5 rounded-lg border border-amber-200 bg-amber-50/60 space-y-2">
+                        <span className="text-[11px] font-bold text-amber-950 block uppercase flex items-center gap-1.5">
+                          <Lock className="h-3.5 w-3.5 text-amber-700" />
+                          Header X-API-Key Seguro
+                        </span>
+                        <code className="font-mono text-xs text-amber-900 block bg-white p-2 rounded border border-amber-200 break-all select-all">
+                          X-API-Key: sk-live_********************
+                        </code>
+                        <p className="text-[11px] text-amber-900">
+                          <strong>Nunca exponha a chave real na interface.</strong> Configure a
+                          variável de ambiente{' '}
+                          <code className="font-mono font-bold">CONSULTOR_API_KEY</code> no painel
+                          de ambiente do serviço FastAPI no Render.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* (c) Snippet Python Completo e Funcional */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                        <Code2 className="h-4 w-4 text-[#0F766E]" />
+                        (c) Snippet Python Completo de Cliente MCP (FastAPI / Render)
+                      </h4>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          copyToClipboard(pythonMcpAgentClientCode, 'Código Python Cliente MCP')
+                        }
+                        className="h-7 text-xs text-[#0F766E] border-teal-200 hover:bg-teal-50"
+                      >
+                        {copiedSnippet === 'Código Python Cliente MCP' ? (
+                          <Check className="h-3.5 w-3.5 mr-1" />
+                        ) : (
+                          <Copy className="h-3.5 w-3.5 mr-1" />
+                        )}
+                        {copiedSnippet === 'Código Python Cliente MCP'
+                          ? 'Copiado!'
+                          : 'Copiar Script Python'}
+                      </Button>
+                    </div>
+                    <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 relative">
+                      <pre className="font-mono text-xs text-emerald-300 overflow-x-auto whitespace-pre max-h-[460px]">
+                        {pythonMcpAgentClientCode}
+                      </pre>
+                    </div>
+                  </div>
+
+                  {/* (d) Diretrizes de Segurança */}
+                  <div className="space-y-2">
+                    <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                      <ShieldCheck className="h-4 w-4 text-emerald-700" />
+                      (d) Diretrizes Críticas de Segurança do Agente
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 space-y-1.5">
+                        <strong className="text-slate-900 text-xs block">
+                          Chave NUNCA no Frontend / LLM
+                        </strong>
+                        <p className="text-[11px] text-slate-600 leading-relaxed">
+                          A chave de API é infraestrutura pura. Ela nunca deve constar em respostas,
+                          prompts de sistema, nem ser acessível pelo navegador do usuário.
+                        </p>
+                      </div>
+
+                      <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 space-y-1.5">
+                        <strong className="text-slate-900 text-xs block">
+                          Limite Máximo de Passos (5 Ações)
+                        </strong>
+                        <p className="text-[11px] text-slate-600 leading-relaxed">
+                          Fixe uma trava de no máximo 5 iterações de ferramentas por turno de
+                          conversa para interromper recursões e prevenir custos desnecessários de
+                          tokens.
+                        </p>
+                      </div>
+
+                      <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 space-y-1.5">
+                        <strong className="text-slate-900 text-xs block">
+                          Tratamento Resiliente de isError
+                        </strong>
+                        <p className="text-[11px] text-slate-600 leading-relaxed">
+                          Quando <code className="font-mono">isError: true</code> ou{' '}
+                          <code className="font-mono">ok: false</code> retornar, injete a mensagem
+                          de erro no contexto para o LLM tentar contornar de forma elegante.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* (e) Mapeamento para Function-Calling */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                        <Boxes className="h-4 w-4 text-[#0F766E]" />
+                        (e) Mapeamento das Tools para Function Calling de LLM
+                      </h4>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          copyToClipboard(
+                            llmFunctionCallingMappingCode,
+                            'Mapeamento Function Calling',
+                          )
+                        }
+                        className="h-7 text-xs text-[#0F766E] border-teal-200 hover:bg-teal-50"
+                      >
+                        {copiedSnippet === 'Mapeamento Function Calling' ? (
+                          <Check className="h-3.5 w-3.5 mr-1" />
+                        ) : (
+                          <Copy className="h-3.5 w-3.5 mr-1" />
+                        )}
+                        {copiedSnippet === 'Mapeamento Function Calling'
+                          ? 'Copiado!'
+                          : 'Copiar Mapeamento'}
+                      </Button>
+                    </div>
+                    <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 relative">
+                      <pre className="font-mono text-xs text-cyan-300 overflow-x-auto whitespace-pre max-h-[320px]">
+                        {llmFunctionCallingMappingCode}
+                      </pre>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </section>
+
             {/* SEÇÃO 4.5: ADAPTADOR MCP (MODEL CONTEXT PROTOCOL) */}
             <section id="adaptador-mcp" className="scroll-mt-20">
               <Card className="border-indigo-200 bg-white shadow-2xs">
@@ -2910,7 +3749,7 @@ def criar_lead(dados_lead):
                     <div className="flex items-center gap-2">
                       <Cpu className="h-5 w-5 text-indigo-700" />
                       <CardTitle className="text-lg font-bold text-slate-900">
-                        10. Adaptador MCP (Model Context Protocol)
+                        12. Adaptador MCP (Model Context Protocol)
                       </CardTitle>
                       <Badge className="bg-indigo-600 text-white font-mono text-[10px]">
                         JSON-RPC 2.0
@@ -2924,7 +3763,7 @@ def criar_lead(dados_lead):
                     </Badge>
                   </div>
                   <CardDescription className="text-xs text-slate-500">
-                    Expõe o mesmo catálogo canônico das 7 ferramentas para agentes de IA e clientes
+                    Expõe o mesmo catálogo canônico das 8 ferramentas para agentes de IA e clientes
                     MCP (Claude Desktop, Cursor, LangChain)
                   </CardDescription>
                 </CardHeader>
@@ -2957,7 +3796,7 @@ def criar_lead(dados_lead):
                       </div>
                       <div className="p-2 bg-white rounded border border-indigo-200">
                         <strong className="block text-indigo-950">Catálogo Canônico</strong>
-                        <span className="text-slate-600">Mesmas 7 tools do registro</span>
+                        <span className="text-slate-600">Mesmas 8 tools do registro</span>
                       </div>
                       <div className="p-2 bg-white rounded border border-indigo-200">
                         <strong className="block text-indigo-950">Auditoria LGPD</strong>
@@ -3310,7 +4149,7 @@ def criar_lead(dados_lead):
                   <div className="flex items-center gap-2">
                     <Layers className="h-5 w-5 text-[#0F766E]" />
                     <CardTitle className="text-lg font-bold text-slate-900">
-                      10. Envelope Padrão de Resposta (V1 & V2)
+                      13. Envelope Padrão de Resposta (V1 & V2)
                     </CardTitle>
                   </div>
                   <CardDescription className="text-xs text-slate-500">
@@ -3386,7 +4225,7 @@ def criar_lead(dados_lead):
                   <div className="flex items-center gap-2">
                     <ShieldAlert className="h-5 w-5 text-red-600" />
                     <CardTitle className="text-lg font-bold text-slate-900">
-                      11. Erros e Códigos Estáveis
+                      14. Erros e Códigos Estáveis
                     </CardTitle>
                   </div>
                   <CardDescription className="text-xs text-slate-500">
@@ -3535,7 +4374,7 @@ def criar_lead(dados_lead):
                   <div className="flex items-center gap-2">
                     <RefreshCw className="h-5 w-5 text-[#0F766E]" />
                     <CardTitle className="text-lg font-bold text-slate-900">
-                      12. Política de Idempotência
+                      15. Política de Idempotência
                     </CardTitle>
                   </div>
                   <CardDescription className="text-xs text-slate-500">
@@ -3549,7 +4388,7 @@ def criar_lead(dados_lead):
                     implementam <strong>idempotência estrita</strong>.
                   </p>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div className="p-4 rounded-lg border border-slate-200 bg-slate-50 space-y-2">
                       <span className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
                         <Send className="h-4 w-4 text-[#0F766E]" />
@@ -3616,6 +4455,28 @@ def criar_lead(dados_lead):
                         </li>
                       </ul>
                     </div>
+
+                    <div className="p-4 rounded-lg border border-purple-200 bg-purple-50/50 space-y-2">
+                      <span className="font-bold text-purple-950 text-xs flex items-center gap-1.5">
+                        <RefreshCw className="h-4 w-4 text-purple-700" />
+                        Estágio do Lead
+                      </span>
+                      <p className="text-xs text-slate-600">
+                        Chave:{' '}
+                        <strong className="font-mono text-slate-800">lead_id ou email</strong>.
+                      </p>
+                      <ul className="text-xs text-slate-600 space-y-1 list-disc pl-4">
+                        <li>
+                          <strong>Mudança:</strong> Atualiza estagio (<strong>HTTP 200</strong>,{' '}
+                          <code className="font-mono">atualizado: true</code>).
+                        </li>
+                        <li>
+                          <strong>Mesmo estágio:</strong> Retorna <strong>HTTP 200</strong> com{' '}
+                          <code className="font-mono">estagio_anterior === estagio_novo</code> sem
+                          erro.
+                        </li>
+                      </ul>
+                    </div>
                   </div>
 
                   {/* Fluxo Passo a Passo */}
@@ -3672,7 +4533,7 @@ def criar_lead(dados_lead):
                   <div className="flex items-center gap-2">
                     <Code2 className="h-5 w-5 text-[#0F766E]" />
                     <CardTitle className="text-lg font-bold text-slate-900">
-                      13. Exemplos Completos de Integração
+                      16. Exemplos Completos de Integração
                     </CardTitle>
                   </div>
                   <CardDescription className="text-xs text-slate-500">
@@ -3683,10 +4544,10 @@ def criar_lead(dados_lead):
                   <Tabs defaultValue="node" className="w-full">
                     <TabsList className="bg-slate-100 border border-slate-200 text-xs">
                       <TabsTrigger value="node" className="text-xs">
-                        Node.js / Express / Next.js
+                        Node.js / TypeScript (Full Client)
                       </TabsTrigger>
-                      <TabsTrigger value="python" className="text-xs">
-                        Python / Requests
+                      <TabsTrigger value="py" className="text-xs">
+                        Python (Requests)
                       </TabsTrigger>
                     </TabsList>
 
@@ -3695,38 +4556,38 @@ def criar_lead(dados_lead):
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => copyToClipboard(nodeFullExample, 'Código Node.js')}
+                          onClick={() => copyToClipboard(nodeFullExample, 'Exemplo Node.js')}
                           className="absolute top-2 right-2 h-7 text-xs text-teal-400 hover:text-teal-300 hover:bg-slate-800"
                         >
-                          {copiedSnippet === 'Código Node.js' ? (
+                          {copiedSnippet === 'Exemplo Node.js' ? (
                             <Check className="h-3.5 w-3.5 mr-1" />
                           ) : (
                             <Copy className="h-3.5 w-3.5 mr-1" />
                           )}
-                          {copiedSnippet === 'Código Node.js' ? 'Copiado!' : 'Copiar Código'}
+                          {copiedSnippet === 'Exemplo Node.js' ? 'Copiado!' : 'Copiar'}
                         </Button>
-                        <pre className="font-mono text-xs text-slate-200 overflow-x-auto whitespace-pre pt-6 sm:pt-0 leading-relaxed">
+                        <pre className="font-mono text-xs text-slate-200 overflow-x-auto whitespace-pre pt-5 sm:pt-0">
                           {nodeFullExample}
                         </pre>
                       </div>
                     </TabsContent>
 
-                    <TabsContent value="python">
+                    <TabsContent value="py">
                       <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 relative">
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => copyToClipboard(pythonExample, 'Código Python')}
+                          onClick={() => copyToClipboard(pythonExample, 'Exemplo Python')}
                           className="absolute top-2 right-2 h-7 text-xs text-teal-400 hover:text-teal-300 hover:bg-slate-800"
                         >
-                          {copiedSnippet === 'Código Python' ? (
+                          {copiedSnippet === 'Exemplo Python' ? (
                             <Check className="h-3.5 w-3.5 mr-1" />
                           ) : (
                             <Copy className="h-3.5 w-3.5 mr-1" />
                           )}
-                          {copiedSnippet === 'Código Python' ? 'Copiado!' : 'Copiar Código'}
+                          {copiedSnippet === 'Exemplo Python' ? 'Copiado!' : 'Copiar'}
                         </Button>
-                        <pre className="font-mono text-xs text-slate-200 overflow-x-auto whitespace-pre pt-6 sm:pt-0 leading-relaxed">
+                        <pre className="font-mono text-xs text-slate-200 overflow-x-auto whitespace-pre pt-5 sm:pt-0">
                           {pythonExample}
                         </pre>
                       </div>
@@ -3743,8 +4604,8 @@ def criar_lead(dados_lead):
                   <div className="flex items-center gap-2">
                     <ShieldCheck className="h-5 w-5 text-[#0F766E]" />
                     <CardTitle className="text-lg font-bold text-slate-900">
-                      12. Segurança &amp; Conformidade LGPD
-                    </CardTitle>
+                      17. Segurança &amp; Conformidade LGPD
+                    </CardTitle>{' '}
                   </div>
                   <CardDescription className="text-xs text-slate-500">
                     Diretrizes de privacidade, auditoria e armazenamento seguro de dados

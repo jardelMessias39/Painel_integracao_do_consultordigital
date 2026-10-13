@@ -1395,6 +1395,155 @@
       }
     }
 
+    // 3.6.1 Domínio: Update Lead Stage
+    const domainUpdateLeadStage = (args) => {
+      const data = args && typeof args === 'object' ? args : {}
+      const issues = []
+
+      const rawLeadId =
+        data.lead_id !== undefined && data.lead_id !== null ? String(data.lead_id) : ''
+      const rawEmail = data.email !== undefined && data.email !== null ? String(data.email) : ''
+
+      const cleanLeadId = rawLeadId.trim()
+      const cleanEmail = rawEmail.trim()
+
+      if (!cleanLeadId && !cleanEmail) {
+        issues.push({
+          field: 'lead_id',
+          message:
+            "É obrigatório informar 'lead_id' ou 'email' para localizar o lead a ser atualizado.",
+        })
+        issues.push({
+          field: 'email',
+          message:
+            "É obrigatório informar 'email' ou 'lead_id' para localizar o lead a ser atualizado.",
+        })
+      }
+
+      let searchById = false
+      let targetLeadId = ''
+      let targetEmail = ''
+
+      if (cleanLeadId) {
+        searchById = true
+        targetLeadId = cleanLeadId
+        if (targetLeadId.length > 50) {
+          issues.push({
+            field: 'lead_id',
+            message: "O parâmetro 'lead_id' informado não deve exceder 50 caracteres.",
+          })
+        }
+      } else if (cleanEmail) {
+        searchById = false
+        targetEmail = cleanEmail.toLowerCase()
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        if (targetEmail.length > 200) {
+          issues.push({
+            field: 'email',
+            message: "O campo 'email' não pode exceder 200 caracteres.",
+          })
+        } else if (!emailRegex.test(targetEmail)) {
+          issues.push({
+            field: 'email',
+            message: "O parâmetro 'email' informado não possui um formato válido de e-mail.",
+          })
+        }
+      }
+
+      const ALLOWED_ESTAGIOS = ['novo', 'qualificado', 'proposta', 'descartado']
+      const rawEstagio =
+        data.estagio_do_lead !== undefined && data.estagio_do_lead !== null
+          ? String(data.estagio_do_lead).toLowerCase().trim()
+          : ''
+
+      if (!rawEstagio) {
+        issues.push({
+          field: 'estagio_do_lead',
+          message:
+            "O campo 'estagio_do_lead' é obrigatório e deve ser um dos valores: 'novo', 'qualificado', 'proposta' ou 'descartado'.",
+        })
+      } else if (!ALLOWED_ESTAGIOS.includes(rawEstagio)) {
+        issues.push({
+          field: 'estagio_do_lead',
+          message:
+            "O campo 'estagio_do_lead' deve ser exatamente um dos valores permitidos: 'novo', 'qualificado', 'proposta' ou 'descartado'.",
+        })
+      }
+
+      if (
+        data.observacao !== undefined &&
+        data.observacao !== null &&
+        typeof data.observacao !== 'string'
+      ) {
+        issues.push({
+          field: 'observacao',
+          message: "O campo 'observacao' deve ser texto de até 500 caracteres.",
+        })
+      } else if (typeof data.observacao === 'string' && data.observacao.length > 500) {
+        issues.push({
+          field: 'observacao',
+          message: "O campo 'observacao' não pode exceder 500 caracteres.",
+        })
+      }
+
+      if (issues.length > 0) {
+        return {
+          ok: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Parâmetros de atualização inválidos.',
+            details: issues,
+          },
+        }
+      }
+
+      let leadRecord = null
+      if (searchById) {
+        try {
+          leadRecord = $app.findRecordById('leads', targetLeadId)
+        } catch (_) {
+          leadRecord = null
+        }
+      } else {
+        const filterParts = ['email = {:email}']
+        const filterParams = { email: targetEmail }
+        const pbFilter = filterParts.join(' && ')
+        const records =
+          $app.findRecordsByFilter('leads', pbFilter, '-created', 1, 0, filterParams) || []
+        if (records.length > 0) {
+          leadRecord = records[0]
+        }
+      }
+
+      if (!leadRecord) {
+        return {
+          ok: true,
+          data: {
+            atualizado: false,
+            motivo: 'lead_nao_encontrado',
+          },
+        }
+      }
+
+      const estagioAnterior = leadRecord.getString('estagio_do_lead') || 'novo'
+      const estagioNovo = rawEstagio
+
+      if (estagioAnterior !== estagioNovo) {
+        leadRecord.set('estagio_do_lead', estagioNovo)
+        $app.save(leadRecord)
+      }
+
+      return {
+        ok: true,
+        data: {
+          atualizado: true,
+          lead_id: leadRecord.id,
+          estagio_anterior: estagioAnterior,
+          estagio_novo: estagioNovo,
+        },
+      }
+    }
+
     // 3.7 Domínio: Tools Registry (consulta canônica do catálogo)
     const canonicalToolsCatalogue = [
       {
@@ -1479,6 +1628,18 @@
         campos_obrigatorios: [],
         campos_opcionais: ['id', 'email'],
         idempotencia: 'não aplicável (leitura)',
+        rate_limit: '120 req/min',
+      },
+      {
+        nome: 'update_lead_stage',
+        metodo: 'POST',
+        caminho: '/v1/tools/update_lead_stage',
+        versao: 'v1',
+        descricao:
+          'Atualiza o estágio comercial de um lead (novo, qualificado, proposta, descartado) por lead_id ou e-mail',
+        campos_obrigatorios: ['estagio_do_lead'],
+        campos_opcionais: ['lead_id', 'email', 'observacao'],
+        idempotencia: 'natural (mesmo estágio devolve atualizado: true sem erro)',
         rate_limit: '120 req/min',
       },
       {
@@ -1708,6 +1869,35 @@
         },
       },
       {
+        name: 'update_lead_stage',
+        description:
+          'Atualiza o estágio comercial de um lead existente (novo, qualificado, proposta, descartado) por lead_id ou e-mail com idempotência natural.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            lead_id: {
+              type: 'string',
+              description: 'Identificador do lead no PocketBase (prioritário se informado)',
+            },
+            email: {
+              type: 'string',
+              description: 'Endereço de e-mail do lead para busca caso lead_id não seja fornecido',
+            },
+            estagio_do_lead: {
+              type: 'string',
+              enum: ['novo', 'qualificado', 'proposta', 'descartado'],
+              description: 'Novo estágio do lead (obrigatório)',
+            },
+            observacao: {
+              type: 'string',
+              description:
+                'Observação ou justificativa opcional (máx 500 caracteres, não gravada em auditoria externa)',
+            },
+          },
+          required: ['estagio_do_lead'],
+        },
+      },
+      {
         name: 'tools_registry',
         description:
           'Índice canônico de descoberta e metadados das ferramentas da Camada de Integração.',
@@ -1805,6 +1995,8 @@
           domainResult = domainListLeads(toolArguments)
         } else if (cleanToolName === 'get_lead') {
           domainResult = domainGetLead(toolArguments)
+        } else if (cleanToolName === 'update_lead_stage') {
+          domainResult = domainUpdateLeadStage(toolArguments)
         } else if (cleanToolName === 'tools_registry') {
           domainResult = domainToolsRegistry()
         } else if (cleanToolName === 'mcp_adapter') {
