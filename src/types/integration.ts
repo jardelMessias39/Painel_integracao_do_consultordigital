@@ -63,3 +63,15 @@ export interface ToolDefinition {
   metodo: string
   status: 'ativa' | 'inativa'
 }
+
+export interface RegisteredToolSummary {
+  nome: string
+  metodo: string
+  caminho: string
+  versao: string
+  descricao: string
+  campos_obrigatorios: string[]
+  campos_opcionais: string[]
+  idempotencia: string
+  rate_limit: string
+}

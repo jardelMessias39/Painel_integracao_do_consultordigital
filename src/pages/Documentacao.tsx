@@ -9,6 +9,7 @@ import {
   Send,
   Calendar,
   Mail,
+  Boxes,
   AlertTriangle,
   RefreshCw,
   Lock,
@@ -40,6 +41,7 @@ interface NavSection {
 const SECTIONS: NavSection[] = [
   { id: 'visao-geral', label: 'Visão Geral' },
   { id: 'autenticacao', label: 'Autenticação' },
+  { id: 'registro-tools', label: 'Registro de Tools', badge: 'GET' },
   { id: 'create-lead', label: 'create_lead', badge: 'POST' },
   { id: 'schedule-meeting', label: 'schedule_meeting', badge: 'POST' },
   { id: 'send-email', label: 'send_email', badge: 'POST' },
@@ -60,11 +62,13 @@ export default function Documentacao() {
   const canonicalCreateLeadUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicEndpointPath}`
   const canonicalScheduleMeetingUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicScheduleMeetingPath}`
   const canonicalSendEmailUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicSendEmailPath}`
+  const canonicalToolsRegistryUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicToolsRegistryPath}`
 
   const internalBaseUrl = INTEGRATION_CONFIG.backendUrl
   const internalCreateLeadUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalEndpointPath}`
   const internalScheduleMeetingUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalScheduleMeetingPath}`
   const internalSendEmailUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalSendEmailPath}`
+  const internalToolsRegistryUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalToolsRegistryPath}`
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text)
@@ -227,6 +231,67 @@ export default function Documentacao() {
     2,
   )
 
+  const toolsRegistrySuccess200 = JSON.stringify(
+    {
+      ok: true,
+      data: {
+        total: 3,
+        tools: [
+          {
+            nome: 'create_lead',
+            metodo: 'POST',
+            caminho: '/v1/tools/create_lead',
+            versao: 'v1',
+            descricao: 'Registra ou atualiza um lead comercial qualificado pelo Consultor Digital',
+            campos_obrigatorios: [
+              'nome',
+              'empresa',
+              'email',
+              'telefone',
+              'necessidade_identificada',
+              'estagio_do_lead',
+            ],
+            campos_opcionais: [
+              'problema_relatado',
+              'requisitos',
+              'solucao_sugerida',
+              'resumo_conversa',
+              'proximo_passo',
+            ],
+            idempotencia: 'email+empresa',
+            rate_limit: '120 req/min',
+          },
+          {
+            nome: 'schedule_meeting',
+            metodo: 'POST',
+            caminho: '/v1/tools/schedule_meeting',
+            versao: 'v1',
+            descricao:
+              'Registra uma solicitação interna de reunião com o consultor com status inicial pendente',
+            campos_obrigatorios: ['nome', 'empresa', 'email', 'telefone', 'data_hora', 'assunto'],
+            campos_opcionais: ['observacoes'],
+            idempotencia: 'email+data_hora',
+            rate_limit: '120 req/min',
+          },
+          {
+            nome: 'send_email',
+            metodo: 'POST',
+            caminho: '/v1/tools/send_email',
+            versao: 'v1',
+            descricao:
+              'Envia um e-mail transacional real para o destinatário através do serviço padrão do servidor',
+            campos_obrigatorios: ['destinatario', 'assunto', 'corpo'],
+            campos_opcionais: ['idempotency_key'],
+            idempotencia: 'idempotency_key do chamador',
+            rate_limit: '30 req/min',
+          },
+        ],
+      },
+    },
+    null,
+    2,
+  )
+
   const errorValidationError = JSON.stringify(
     {
       ok: false,
@@ -305,6 +370,9 @@ export default function Documentacao() {
   -H "X-API-Key: sk-live_********************" \\
   -d '${sendEmailPayload}'`
 
+  const curlToolsRegistry = `curl -X GET "${canonicalToolsRegistryUrl}" \\
+  -H "X-API-Key: sk-live_********************"`
+
   const nodeFullExample = `// Chamada server-to-server executada no backend do chatbot (ex: Render / Node.js)
 // URL canônica com fallback automático em caso de 405 do proxy público
 const CANONICAL_URL = process.env.INTEGRATION_LAYER_URL || 
@@ -375,6 +443,21 @@ async function enviarEmail(emailData) {
     corpo: emailData.corpo,
     idempotency_key: emailData.idempotency_key, // ex: \`idem_email_\${emailData.meeting_id}\`
   });
+}
+
+// 4. Descobrir catálogo de ferramentas registradas (dinâmico, sem redeploy)
+async function listarToolsDisponiveis() {
+  const response = await fetch('${canonicalToolsRegistryUrl}', {
+    method: 'GET',
+    headers: {
+      'X-API-Key': API_KEY,
+    },
+  });
+  const result = await response.json();
+  if (!result.ok) {
+    throw new Error(\`[\${result.error.code}] \${result.error.message}\`);
+  }
+  return result.data.tools;
 }`
 
   const pythonExample = `import os
@@ -447,7 +530,7 @@ def criar_lead(dados_lead):
             <Server className="h-3.5 w-3.5 text-[#0F766E]" />
             <span>Documentação da API</span>
             <Badge className="bg-teal-100 text-[#0F766E] hover:bg-teal-100 text-[10px] py-0 px-1.5 font-mono">
-              3 Endpoints
+              4 Endpoints
             </Badge>
           </button>
 
@@ -567,7 +650,25 @@ def criar_lead(dados_lead):
                     consultores.
                   </p>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+                    <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-slate-900 text-xs flex items-center gap-1.5">
+                          <Boxes className="h-3.5 w-3.5 text-[#0F766E]" />
+                          GET /tools
+                        </span>
+                        <Badge className="bg-cyan-100 text-cyan-800 border-cyan-200 text-[10px]">
+                          V2 Descoberta
+                        </Badge>
+                      </div>
+                      <p className="text-slate-600 text-xs">
+                        Índice canônico de descoberta das tools disponíveis para os chamadores.
+                      </p>
+                      <code className="text-[11px] font-mono text-slate-800 bg-white p-1 rounded border border-slate-200 block truncate">
+                        /api/backend/v1/tools
+                      </code>
+                    </div>
+
                     <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50 space-y-1.5">
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-slate-900 text-xs flex items-center gap-1.5">
@@ -725,13 +826,15 @@ def criar_lead(dados_lead):
                     <div className="p-3.5 rounded-lg border border-teal-200 bg-teal-50/70 text-xs text-teal-950 space-y-1">
                       <div className="flex items-center gap-1.5 font-bold text-teal-900">
                         <Clock className="h-3.5 w-3.5 text-[#0F766E]" />
-                        <span>Rate Limiting</span>
+                        <span>Rate Limiting por Endpoint</span>
                       </div>
                       <p className="text-teal-900 leading-relaxed">
-                        A Camada aplica limites em memória por chave: <strong>120 req/min</strong>{' '}
-                        para <code className="font-mono">create_lead</code> e{' '}
+                        A Camada aplica limites em memória por chave: <strong>60 req/min</strong>{' '}
+                        para o catálogo <code className="font-mono">/tools</code>,{' '}
+                        <strong>120 req/min</strong> para{' '}
+                        <code className="font-mono">create_lead</code> e{' '}
                         <code className="font-mono">schedule_meeting</code>, e{' '}
-                        <strong>30 req/min</strong> mais restritivo para{' '}
+                        <strong>30 req/min</strong> para{' '}
                         <code className="font-mono">send_email</code>. Se excedido, o servidor
                         retorna HTTP 429 com código <code className="font-mono">RATE_LIMITED</code>.
                       </p>
@@ -741,7 +844,133 @@ def criar_lead(dados_lead):
               </Card>
             </section>
 
-            {/* SEÇÃO 3: ENDPOINT create_lead */}
+            {/* SEÇÃO 3: REGISTRO DE TOOLS (DESCOBERTA V2) */}
+            <section id="registro-tools" className="scroll-mt-20">
+              <Card className="border-slate-200 bg-white shadow-2xs">
+                <CardHeader className="pb-3 border-b border-slate-100">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-cyan-600 text-white font-mono text-xs">GET</Badge>
+                      <CardTitle className="text-base sm:text-lg font-bold text-slate-900 font-mono">
+                        3. /tools (Registro &amp; Descoberta)
+                      </CardTitle>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="border-cyan-300 text-cyan-800 bg-cyan-50 text-xs w-fit"
+                    >
+                      Descoberta Dinâmica de Tools
+                    </Badge>
+                  </div>
+                  <CardDescription className="text-xs text-slate-500 mt-1">
+                    Permite que o Consultor Digital ou outros clientes descubram dinamicamente as
+                    ferramentas disponíveis na Camada de Integração, seus caminhos, métodos, campos
+                    obrigatórios/opcionais e regras de idempotência sem necessidade de redeploy do
+                    chamador.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-4 space-y-4">
+                  <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-700 space-y-2">
+                    <h4 className="font-bold text-slate-900 flex items-center gap-1.5">
+                      <Boxes className="h-4 w-4 text-[#0F766E]" />
+                      Propósito do Registro na Arquitetura (ADR-001)
+                    </h4>
+                    <p className="leading-relaxed">
+                      Conforme o ADR-001, a HTTP API é o contrato canônico da Camada de Integração.
+                      O endpoint{' '}
+                      <code className="font-mono font-semibold text-slate-900">
+                        GET /v1/tools
+                      </code>{' '}
+                      atua como índice de capacidades ativas. Novas ferramentas adicionadas à camada
+                      tornam-se imediatamente visíveis e introspectáveis pelos chamadores
+                      autorizados através de um contrato enxuto e seguro.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 font-mono text-[11px]">
+                      <div className="bg-white p-2 rounded border border-slate-200">
+                        <span className="text-slate-400 block">Método:</span>
+                        <strong className="text-cyan-700">GET</strong>
+                      </div>
+                      <div className="bg-white p-2 rounded border border-slate-200">
+                        <span className="text-slate-400 block">Rate Limit:</span>
+                        <strong className="text-slate-800">60 req/min</strong>
+                      </div>
+                      <div className="bg-white p-2 rounded border border-slate-200">
+                        <span className="text-slate-400 block">Auditoria:</span>
+                        <strong className="text-slate-800">tool_logs (tools_registry)</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Exemplos de Response e cURL */}
+                  <Tabs defaultValue="res200" className="w-full">
+                    <TabsList className="bg-slate-100 border border-slate-200 text-xs">
+                      <TabsTrigger value="res200" className="text-xs">
+                        Resposta 200 OK (Catálogo Completo)
+                      </TabsTrigger>
+                      <TabsTrigger value="curl" className="text-xs">
+                        cURL
+                      </TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="res200">
+                      <div className="rounded-lg border border-cyan-300 bg-slate-950 p-3 relative">
+                        <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-800">
+                          <div className="flex items-center gap-2">
+                            <Badge className="bg-cyan-600 text-white font-mono text-[10px]">
+                              HTTP 200 OK
+                            </Badge>
+                            <span className="text-xs text-cyan-400 font-mono">
+                              total: 3 ferramentas
+                            </span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              copyToClipboard(toolsRegistrySuccess200, 'Resposta GET /tools')
+                            }
+                            className="h-6 text-xs text-cyan-400 hover:text-cyan-300 hover:bg-slate-800"
+                          >
+                            {copiedSnippet === 'Resposta GET /tools' ? (
+                              <Check className="h-3 w-3 mr-1" />
+                            ) : (
+                              <Copy className="h-3 w-3 mr-1" />
+                            )}
+                            {copiedSnippet === 'Resposta GET /tools' ? 'Copiado!' : 'Copiar'}
+                          </Button>
+                        </div>
+                        <pre className="font-mono text-xs text-cyan-300 overflow-x-auto whitespace-pre max-h-[420px]">
+                          {toolsRegistrySuccess200}
+                        </pre>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="curl">
+                      <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 relative">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard(curlToolsRegistry, 'cURL GET /tools')}
+                          className="absolute top-2 right-2 h-7 text-xs text-teal-400 hover:text-teal-300 hover:bg-slate-800"
+                        >
+                          {copiedSnippet === 'cURL GET /tools' ? (
+                            <Check className="h-3.5 w-3.5 mr-1" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5 mr-1" />
+                          )}
+                          {copiedSnippet === 'cURL GET /tools' ? 'Copiado!' : 'Copiar'}
+                        </Button>
+                        <pre className="font-mono text-xs text-slate-200 overflow-x-auto whitespace-pre pt-5 sm:pt-0">
+                          {curlToolsRegistry}
+                        </pre>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                </CardContent>
+              </Card>
+            </section>
+
+            {/* SEÇÃO 4: ENDPOINT create_lead */}
             <section id="create-lead" className="scroll-mt-20">
               <Card className="border-slate-200 bg-white shadow-2xs">
                 <CardHeader className="pb-3 border-b border-slate-100">
@@ -749,7 +978,7 @@ def criar_lead(dados_lead):
                     <div className="flex items-center gap-2">
                       <Badge className="bg-emerald-600 text-white font-mono text-xs">POST</Badge>
                       <CardTitle className="text-base sm:text-lg font-bold text-slate-900 font-mono">
-                        /create_lead
+                        4. /create_lead
                       </CardTitle>
                     </div>
                     <Badge
@@ -984,7 +1213,7 @@ def criar_lead(dados_lead):
                     <div className="flex items-center gap-2">
                       <Badge className="bg-teal-600 text-white font-mono text-xs">POST</Badge>
                       <CardTitle className="text-base sm:text-lg font-bold text-slate-900 font-mono">
-                        /schedule_meeting
+                        5. /schedule_meeting
                       </CardTitle>
                     </div>
                     <Badge
@@ -1266,7 +1495,7 @@ def criar_lead(dados_lead):
                     <div className="flex items-center gap-2">
                       <Badge className="bg-indigo-600 text-white font-mono text-xs">POST</Badge>
                       <CardTitle className="text-base sm:text-lg font-bold text-slate-900 font-mono">
-                        /send_email
+                        6. /send_email
                       </CardTitle>
                     </div>
                     <Badge
@@ -1494,13 +1723,13 @@ def criar_lead(dados_lead):
                   <div className="flex items-center gap-2">
                     <Layers className="h-5 w-5 text-[#0F766E]" />
                     <CardTitle className="text-lg font-bold text-slate-900">
-                      5. Envelope Padrão de Resposta (V1)
+                      7. Envelope Padrão de Resposta (V1 & V2)
                     </CardTitle>
                   </div>
                   <CardDescription className="text-xs text-slate-500">
-                    Formato determinístico para parsing sem ambiguidade no chatbot
+                    Todas as respostas seguem uma estrutura previsível de envelope JSON
                   </CardDescription>
-                </CardHeader>
+                </CardHeader>{' '}
                 <CardContent className="space-y-4 text-xs sm:text-sm text-slate-700">
                   <p>
                     Todas as respostas da API utilizam rigorosamente um dos dois envelopes
@@ -1570,13 +1799,13 @@ def criar_lead(dados_lead):
                   <div className="flex items-center gap-2">
                     <ShieldAlert className="h-5 w-5 text-red-600" />
                     <CardTitle className="text-lg font-bold text-slate-900">
-                      6. Erros e Códigos Estáveis
+                      8. Erros e Códigos Estáveis
                     </CardTitle>
                   </div>
                   <CardDescription className="text-xs text-slate-500">
-                    Catálogo de códigos estáveis para tratamento programático de exceções no chatbot
+                    Códigos de erro padronizados e semântica de resposta
                   </CardDescription>
-                </CardHeader>
+                </CardHeader>{' '}
                 <CardContent className="space-y-4">
                   <div className="overflow-x-auto rounded-lg border border-slate-200">
                     <table className="w-full text-left text-xs border-collapse">
@@ -1719,13 +1948,13 @@ def criar_lead(dados_lead):
                   <div className="flex items-center gap-2">
                     <RefreshCw className="h-5 w-5 text-[#0F766E]" />
                     <CardTitle className="text-lg font-bold text-slate-900">
-                      7. Política de Idempotência
+                      9. Política de Idempotência
                     </CardTitle>
                   </div>
                   <CardDescription className="text-xs text-slate-500">
-                    Garantia contra duplicação de dados em retentativas do chatbot ou do LLM
+                    Garantia de segurança contra execuções duplicadas e retries de rede
                   </CardDescription>
-                </CardHeader>
+                </CardHeader>{' '}
                 <CardContent className="space-y-4 text-xs sm:text-sm text-slate-700 leading-relaxed">
                   <p>
                     Para proteger o sistema contra re-execuções causadas por perda de conexão,
@@ -1856,13 +2085,13 @@ def criar_lead(dados_lead):
                   <div className="flex items-center gap-2">
                     <Code2 className="h-5 w-5 text-[#0F766E]" />
                     <CardTitle className="text-lg font-bold text-slate-900">
-                      8. Exemplos Completos de Integração
+                      10. Exemplos Completos de Integração
                     </CardTitle>
                   </div>
                   <CardDescription className="text-xs text-slate-500">
-                    Snippets prontos para uso em Node.js (Render) e Python
+                    Snippets prontos para uso em Node.js (TypeScript) e Python
                   </CardDescription>
-                </CardHeader>
+                </CardHeader>{' '}
                 <CardContent className="space-y-4">
                   <Tabs defaultValue="node" className="w-full">
                     <TabsList className="bg-slate-100 border border-slate-200 text-xs">
@@ -1927,7 +2156,7 @@ def criar_lead(dados_lead):
                   <div className="flex items-center gap-2">
                     <ShieldCheck className="h-5 w-5 text-[#0F766E]" />
                     <CardTitle className="text-lg font-bold text-slate-900">
-                      9. Segurança &amp; Conformidade LGPD
+                      11. Segurança &amp; Conformidade LGPD
                     </CardTitle>
                   </div>
                   <CardDescription className="text-xs text-slate-500">
