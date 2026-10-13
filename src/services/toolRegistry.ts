@@ -6,12 +6,16 @@ const ROUTE_CREATE_LEAD = '/backend/v1/tools/create_lead'
 const ROUTE_SCHEDULE_MEETING = '/backend/v1/tools/schedule_meeting'
 const ROUTE_SEND_EMAIL = '/backend/v1/tools/send_email'
 const ROUTE_LIST_MEETINGS = '/backend/v1/tools/list_meetings'
+const ROUTE_LIST_LEADS = '/backend/v1/tools/list_leads'
+const ROUTE_GET_LEAD = '/backend/v1/tools/get_lead'
 const ROUTE_TOOLS_REGISTRY = '/backend/v1/tools'
 
 const PUBLIC_CREATE_LEAD_PATH = `${ROUTE_API_PREFIX}${ROUTE_CREATE_LEAD}`
 const PUBLIC_SCHEDULE_MEETING_PATH = `${ROUTE_API_PREFIX}${ROUTE_SCHEDULE_MEETING}`
 const PUBLIC_SEND_EMAIL_PATH = `${ROUTE_API_PREFIX}${ROUTE_SEND_EMAIL}`
 const PUBLIC_LIST_MEETINGS_PATH = `${ROUTE_API_PREFIX}${ROUTE_LIST_MEETINGS}`
+const PUBLIC_LIST_LEADS_PATH = `${ROUTE_API_PREFIX}${ROUTE_LIST_LEADS}`
+const PUBLIC_GET_LEAD_PATH = `${ROUTE_API_PREFIX}${ROUTE_GET_LEAD}`
 const PUBLIC_TOOLS_REGISTRY_PATH = `${ROUTE_API_PREFIX}${ROUTE_TOOLS_REGISTRY}`
 
 export const toolRegistryList: ToolDefinition[] = [
@@ -52,6 +56,24 @@ export const toolRegistryList: ToolDefinition[] = [
     status: 'ativa',
   },
   {
+    nome: 'list_leads',
+    descricao:
+      'Consulta e lista leads comerciais qualificados com filtros por e-mail, estágio do lead, empresa e limite para o Consultor Digital.',
+    escopo: 'leads:read',
+    endpoint: PUBLIC_LIST_LEADS_PATH,
+    metodo: 'GET',
+    status: 'ativa',
+  },
+  {
+    nome: 'get_lead',
+    descricao:
+      'Consulta os detalhes sanitizados de um lead específico a partir do seu id ou endereço de e-mail cadastrado.',
+    escopo: 'leads:read',
+    endpoint: PUBLIC_GET_LEAD_PATH,
+    metodo: 'GET',
+    status: 'ativa',
+  },
+  {
     nome: 'tools_registry',
     descricao:
       'Índice canônico de descoberta de ferramentas disponíveis na Camada de Integração para os chamadores.',
@@ -63,13 +85,15 @@ export const toolRegistryList: ToolDefinition[] = [
 ]
 
 export const INTEGRATION_CONFIG = {
-  version: 'v2.3.0',
+  version: 'v2.4.0',
   // Domínio público do Skip Cloud e caminhos públicos roteados via /api/*
   publicDomain: 'https://integracao-de-ferramentas-do-consultor-e38b8' + '.goskip.app',
   publicEndpointPath: PUBLIC_CREATE_LEAD_PATH,
   publicScheduleMeetingPath: PUBLIC_SCHEDULE_MEETING_PATH,
   publicSendEmailPath: PUBLIC_SEND_EMAIL_PATH,
   publicListMeetingsPath: PUBLIC_LIST_MEETINGS_PATH,
+  publicListLeadsPath: PUBLIC_LIST_LEADS_PATH,
+  publicGetLeadPath: PUBLIC_GET_LEAD_PATH,
   publicToolsRegistryPath: PUBLIC_TOOLS_REGISTRY_PATH,
   // URL interna/direta ao PocketBase
   backendUrl:
@@ -79,6 +103,8 @@ export const INTEGRATION_CONFIG = {
   internalScheduleMeetingPath: ROUTE_SCHEDULE_MEETING,
   internalSendEmailPath: ROUTE_SEND_EMAIL,
   internalListMeetingsPath: ROUTE_LIST_MEETINGS,
+  internalListLeadsPath: ROUTE_LIST_LEADS,
+  internalGetLeadPath: ROUTE_GET_LEAD,
   internalToolsRegistryPath: ROUTE_TOOLS_REGISTRY,
   endpointPath: PUBLIC_CREATE_LEAD_PATH,
 }

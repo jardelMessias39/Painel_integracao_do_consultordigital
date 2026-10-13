@@ -86,6 +86,30 @@
         idempotencia: 'não aplicável (leitura)',
         rate_limit: '120 req/min',
       },
+      {
+        nome: 'list_leads',
+        metodo: 'GET',
+        caminho: '/v1/tools/list_leads',
+        versao: 'v1',
+        descricao:
+          'Consulta e lista leads comerciais qualificados com filtros por e-mail, estágio, empresa e limite',
+        campos_obrigatorios: [],
+        campos_opcionais: ['email', 'estagio_do_lead', 'empresa', 'limite'],
+        idempotencia: 'não aplicável (leitura)',
+        rate_limit: '120 req/min',
+      },
+      {
+        nome: 'get_lead',
+        metodo: 'GET',
+        caminho: '/v1/tools/get_lead',
+        versao: 'v1',
+        descricao:
+          'Consulta os detalhes sanitizados de um lead específico a partir do seu id ou endereço de e-mail',
+        campos_obrigatorios: [],
+        campos_opcionais: ['id', 'email'],
+        idempotencia: 'não aplicável (leitura)',
+        rate_limit: '120 req/min',
+      },
     ]
 
     // =========================================================================

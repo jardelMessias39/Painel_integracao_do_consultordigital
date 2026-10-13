@@ -23,6 +23,7 @@ import {
   XCircle,
   Clock,
   Terminal,
+  Database,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -46,6 +47,8 @@ const SECTIONS: NavSection[] = [
   { id: 'schedule-meeting', label: 'schedule_meeting', badge: 'POST' },
   { id: 'send-email', label: 'send_email', badge: 'POST' },
   { id: 'list-meetings', label: 'list_meetings', badge: 'GET' },
+  { id: 'list-leads', label: 'list_leads', badge: 'GET' },
+  { id: 'get-lead', label: 'get_lead', badge: 'GET' },
   { id: 'envelope-respostas', label: 'Envelope Padrão' },
   { id: 'erros-codigos', label: 'Erros e Códigos' },
   { id: 'idempotencia', label: 'Idempotência' },
@@ -64,6 +67,8 @@ export default function Documentacao() {
   const canonicalScheduleMeetingUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicScheduleMeetingPath}`
   const canonicalSendEmailUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicSendEmailPath}`
   const canonicalListMeetingsUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicListMeetingsPath}`
+  const canonicalListLeadsUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicListLeadsPath}`
+  const canonicalGetLeadUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicGetLeadPath}`
   const canonicalToolsRegistryUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicToolsRegistryPath}`
 
   const internalBaseUrl = INTEGRATION_CONFIG.backendUrl
@@ -71,6 +76,8 @@ export default function Documentacao() {
   const internalScheduleMeetingUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalScheduleMeetingPath}`
   const internalSendEmailUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalSendEmailPath}`
   const internalListMeetingsUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalListMeetingsPath}`
+  const internalListLeadsUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalListLeadsPath}`
+  const internalGetLeadUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalGetLeadPath}`
   const internalToolsRegistryUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalToolsRegistryPath}`
 
   const copyToClipboard = (text: string, label: string) => {
@@ -238,7 +245,7 @@ export default function Documentacao() {
     {
       ok: true,
       data: {
-        total: 4,
+        total: 6,
         tools: [
           {
             nome: 'create_lead',
@@ -300,6 +307,30 @@ export default function Documentacao() {
             idempotencia: 'não aplicável (leitura)',
             rate_limit: '120 req/min',
           },
+          {
+            nome: 'list_leads',
+            metodo: 'GET',
+            caminho: '/v1/tools/list_leads',
+            versao: 'v1',
+            descricao:
+              'Consulta e lista leads comerciais qualificados com filtros por e-mail, estágio, empresa e limite',
+            campos_obrigatorios: [],
+            campos_opcionais: ['email', 'estagio_do_lead', 'empresa', 'limite'],
+            idempotencia: 'não aplicável (leitura)',
+            rate_limit: '120 req/min',
+          },
+          {
+            nome: 'get_lead',
+            metodo: 'GET',
+            caminho: '/v1/tools/get_lead',
+            versao: 'v1',
+            descricao:
+              'Consulta os detalhes sanitizados de um lead específico a partir do seu id ou endereço de e-mail',
+            campos_obrigatorios: [],
+            campos_opcionais: ['id', 'email'],
+            idempotencia: 'não aplicável (leitura)',
+            rate_limit: '120 req/min',
+          },
         ],
       },
     },
@@ -336,6 +367,70 @@ export default function Documentacao() {
             created: '2026-09-30 19:17:49.199Z',
           },
         ],
+      },
+    },
+    null,
+    2,
+  )
+
+  const listLeadsSuccess200 = JSON.stringify(
+    {
+      ok: true,
+      data: {
+        total: 2,
+        leads: [
+          {
+            id: 'ljcccduj00419re',
+            nome: 'Teste Controlado',
+            empresa: 'Pessoa fisica',
+            email: 'teste.controlado@exemplo.com',
+            telefone: '(11) 97777-8888',
+            necessidade_identificada: 'Validacao pos-rotacao',
+            estagio_do_lead: 'novo',
+            created: '2026-10-12 16:15:00.183Z',
+          },
+          {
+            id: 'zpnga4i0zkj5r37',
+            nome: 'Auditoria Integration 2026',
+            empresa: 'Test Inc',
+            email: 'auditoria_integration_2026@example.com',
+            telefone: '11999999999',
+            necessidade_identificada: 'Teste automatizado da API de integracao.',
+            estagio_do_lead: 'novo',
+            created: '2026-10-08 17:16:18.988Z',
+          },
+        ],
+      },
+    },
+    null,
+    2,
+  )
+
+  const getLeadSuccess200 = JSON.stringify(
+    {
+      ok: true,
+      data: {
+        lead: {
+          id: 'ljcccduj00419re',
+          nome: 'Teste Controlado',
+          empresa: 'Pessoa fisica',
+          email: 'teste.controlado@exemplo.com',
+          telefone: '(11) 97777-8888',
+          necessidade_identificada: 'Validacao pos-rotacao',
+          estagio_do_lead: 'novo',
+          created: '2026-10-12 16:15:00.183Z',
+        },
+      },
+    },
+    null,
+    2,
+  )
+
+  const getLeadNotFound200 = JSON.stringify(
+    {
+      ok: true,
+      data: {
+        lead: null,
       },
     },
     null,
@@ -421,6 +516,15 @@ export default function Documentacao() {
   -d '${sendEmailPayload}'`
 
   const curlListMeetings = `curl -X GET "${canonicalListMeetingsUrl}?email=teste.controlado%40exemplo.com&status=confirmada&futuras_apenas=true&limite=10" \\
+  -H "X-API-Key: sk-live_********************"`
+
+  const curlListLeads = `curl -X GET "${canonicalListLeadsUrl}?estagio_do_lead=novo&limite=10" \\
+  -H "X-API-Key: sk-live_********************"`
+
+  const curlGetLeadById = `curl -X GET "${canonicalGetLeadUrl}?id=ljcccduj00419re" \\
+  -H "X-API-Key: sk-live_********************"`
+
+  const curlGetLeadByEmail = `curl -X GET "${canonicalGetLeadUrl}?email=teste.controlado%40exemplo.com" \\
   -H "X-API-Key: sk-live_********************"`
 
   const curlToolsRegistry = `curl -X GET "${canonicalToolsRegistryUrl}" \\
@@ -815,6 +919,42 @@ def criar_lead(dados_lead):
                         .../list_meetings
                       </code>
                     </div>
+
+                    <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-slate-900 text-xs flex items-center gap-1.5">
+                          <Database className="h-3.5 w-3.5 text-blue-600" />
+                          GET /list_leads
+                        </span>
+                        <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-[10px]">
+                          V2 Leitura
+                        </Badge>
+                      </div>
+                      <p className="text-slate-600 text-xs">
+                        Lista leads qualificados com filtros por email, estágio e empresa.
+                      </p>
+                      <code className="text-[10px] font-mono text-slate-800 bg-white p-1 rounded border border-slate-200 block truncate">
+                        .../list_leads
+                      </code>
+                    </div>
+
+                    <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-slate-900 text-xs flex items-center gap-1.5">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-blue-600" />
+                          GET /get_lead
+                        </span>
+                        <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-[10px]">
+                          V2 Leitura
+                        </Badge>
+                      </div>
+                      <p className="text-slate-600 text-xs">
+                        Consulta lead específico sanitizado por ID ou endereço de email.
+                      </p>
+                      <code className="text-[10px] font-mono text-slate-800 bg-white p-1 rounded border border-slate-200 block truncate">
+                        .../get_lead
+                      </code>
+                    </div>
                   </div>
 
                   {/* NOTA DE ROTEAMENTO CANÔNICA VS INTERNA */}
@@ -924,10 +1064,11 @@ def criar_lead(dados_lead):
                         para o catálogo <code className="font-mono">/tools</code>,{' '}
                         <strong>120 req/min</strong> para{' '}
                         <code className="font-mono">create_lead</code>,{' '}
-                        <code className="font-mono">schedule_meeting</code> e{' '}
-                        <code className="font-mono">list_meetings</code>, e{' '}
-                        <strong>30 req/min</strong> para{' '}
-                        <code className="font-mono">send_email</code>. Se excedido, o servidor
+                        <code className="font-mono">schedule_meeting</code>,{' '}
+                        <code className="font-mono">list_meetings</code>,{' '}
+                        <code className="font-mono">list_leads</code> e{' '}
+                        <code className="font-mono">get_lead</code>, e <strong>30 req/min</strong>{' '}
+                        para <code className="font-mono">send_email</code>. Se excedido, o servidor
                         retorna HTTP 429 com código <code className="font-mono">RATE_LIMITED</code>.
                       </p>
                     </div>
@@ -1012,7 +1153,7 @@ def criar_lead(dados_lead):
                               HTTP 200 OK
                             </Badge>
                             <span className="text-xs text-cyan-400 font-mono">
-                              total: 3 ferramentas
+                              total: 6 ferramentas
                             </span>
                           </div>
                           <Button
@@ -2030,6 +2171,446 @@ def criar_lead(dados_lead):
               </Card>
             </section>
 
+            {/* SEÇÃO 4.3: ENDPOINT list_leads (NOVO - V2 LEITURA) */}
+            <section id="list-leads" className="scroll-mt-20">
+              <Card className="border-slate-200 bg-white shadow-2xs">
+                <CardHeader className="pb-3 border-b border-slate-100">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-blue-600 text-white font-mono text-xs">GET</Badge>
+                      <CardTitle className="text-base sm:text-lg font-bold text-slate-900 font-mono">
+                        8. /list_leads
+                      </CardTitle>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="border-blue-300 text-blue-800 bg-blue-50 text-xs w-fit"
+                    >
+                      Leitura Segura (LGPD &amp; Sem Mutação)
+                    </Badge>
+                  </div>
+                  <CardDescription className="text-xs text-slate-500 mt-1">
+                    Permite que o Consultor Digital consulte leads qualificados cadastrados no CRM
+                    com filtros por e-mail, estágio do funil, empresa e limite de paginação.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-4 space-y-4">
+                  {/* Tabela de Query Parameters */}
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide mb-2">
+                      Parâmetros de Consulta (Query Params)
+                    </h3>
+                    <div className="overflow-x-auto rounded-lg border border-slate-200">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-200 bg-slate-50/90 font-medium text-slate-600">
+                            <th className="py-2.5 px-3">Parâmetro</th>
+                            <th className="py-2.5 px-3">Tipo</th>
+                            <th className="py-2.5 px-3">Obrigatoriedade</th>
+                            <th className="py-2.5 px-3">Regras / Descrição</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-sans">
+                          <tr>
+                            <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                              email
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-500">string (query)</td>
+                            <td className="py-2.5 px-3">
+                              <Badge className="bg-slate-100 text-slate-700 border-slate-200 text-[10px]">
+                                Opcional
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600">
+                              Filtra leads por endereço exato de e-mail. Valida formato RFC de
+                              e-mail se fornecido.
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                              estagio_do_lead
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-500">string (query)</td>
+                            <td className="py-2.5 px-3">
+                              <Badge className="bg-slate-100 text-slate-700 border-slate-200 text-[10px]">
+                                Opcional
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600">
+                              Filtra por estágio comercial. Valores estritos:{' '}
+                              <code className="font-mono text-slate-800 font-semibold">
+                                novo | qualificado | proposta | descartado
+                              </code>
+                              . Qualquer outro valor gera erro{' '}
+                              <code className="font-mono">VALIDATION_ERROR</code>.
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                              empresa
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-500">string (query)</td>
+                            <td className="py-2.5 px-3">
+                              <Badge className="bg-slate-100 text-slate-700 border-slate-200 text-[10px]">
+                                Opcional
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600">
+                              Filtra leads cujo nome da empresa contenha o termo informado (busca
+                              parcial / case-insensitive).
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                              limite
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-500">number (query)</td>
+                            <td className="py-2.5 px-3">
+                              <Badge className="bg-slate-100 text-slate-700 border-slate-200 text-[10px]">
+                                Opcional (Default: 10)
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600">
+                              Quantidade máxima de leads a retornar no array (inteiro entre{' '}
+                              <strong>1 e 50</strong>). O campo{' '}
+                              <code className="font-mono">total</code> da resposta indica o número
+                              retornado.
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Detalhes de LGPD e Ordenação */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                    <div className="p-3 rounded-lg border border-blue-100 bg-blue-50/60 text-xs text-blue-950 space-y-1.5">
+                      <div className="flex items-center gap-1.5 font-bold text-blue-900">
+                        <Calendar className="h-4 w-4 text-blue-700" />
+                        <span>Regra de Ordenação Natural</span>
+                      </div>
+                      <p className="text-slate-600 leading-relaxed text-xs">
+                        A consulta retorna os leads mais recentes primeiro (ordem decrescente de
+                        criação: <code className="font-mono">-created</code>), permitindo que o
+                        Consultor Digital acesse rapidamente o histórico recente.
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 space-y-1.5">
+                      <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                        <ShieldCheck className="h-4 w-4 text-[#0F766E]" />
+                        <span>Sanitização LGPD</span>
+                      </div>
+                      <p className="text-slate-600 leading-relaxed text-xs">
+                        Retorna exclusivamente os campos de contato comercial autorizados:{' '}
+                        <code className="font-mono font-semibold">
+                          id, nome, empresa, email, telefone, necessidade_identificada,
+                          estagio_do_lead, created
+                        </code>
+                        . Textos longos são truncados a 500 caracteres e a auditoria em{' '}
+                        <code className="font-mono font-semibold">tool_logs</code> não grava valores
+                        de filtros.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Abas com Exemplos */}
+                  <Tabs defaultValue="res200" className="w-full">
+                    <TabsList className="bg-slate-100 border border-slate-200 text-xs">
+                      <TabsTrigger value="res200" className="text-xs">
+                        Resposta 200 OK
+                      </TabsTrigger>
+                      <TabsTrigger value="curl" className="text-xs">
+                        cURL
+                      </TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="res200">
+                      <div className="rounded-lg border border-blue-300 bg-slate-950 p-3 relative">
+                        <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-800">
+                          <div className="flex items-center gap-2">
+                            <Badge className="bg-blue-600 text-white font-mono text-[10px]">
+                              HTTP 200 OK
+                            </Badge>
+                            <span className="text-xs text-blue-400 font-mono">
+                              total: 2 leads encontrados
+                            </span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              copyToClipboard(listLeadsSuccess200, 'Resposta GET /list_leads')
+                            }
+                            className="h-6 text-xs text-blue-400 hover:text-blue-300 hover:bg-slate-800"
+                          >
+                            {copiedSnippet === 'Resposta GET /list_leads' ? (
+                              <Check className="h-3 w-3 mr-1" />
+                            ) : (
+                              <Copy className="h-3 w-3 mr-1" />
+                            )}
+                            {copiedSnippet === 'Resposta GET /list_leads' ? 'Copiado!' : 'Copiar'}
+                          </Button>
+                        </div>
+                        <pre className="font-mono text-xs text-blue-300 overflow-x-auto whitespace-pre max-h-[380px]">
+                          {listLeadsSuccess200}
+                        </pre>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="curl">
+                      <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 relative">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard(curlListLeads, 'cURL list_leads')}
+                          className="absolute top-2 right-2 h-7 text-xs text-blue-400 hover:text-blue-300 hover:bg-slate-800"
+                        >
+                          {copiedSnippet === 'cURL list_leads' ? (
+                            <Check className="h-3.5 w-3.5 mr-1" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5 mr-1" />
+                          )}
+                          {copiedSnippet === 'cURL list_leads' ? 'Copiado!' : 'Copiar'}
+                        </Button>
+                        <pre className="font-mono text-xs text-slate-200 overflow-x-auto whitespace-pre pt-5 sm:pt-0">
+                          {curlListLeads}
+                        </pre>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                </CardContent>
+              </Card>
+            </section>
+
+            {/* SEÇÃO 4.4: ENDPOINT get_lead (NOVO - V2 LEITURA) */}
+            <section id="get-lead" className="scroll-mt-20">
+              <Card className="border-slate-200 bg-white shadow-2xs">
+                <CardHeader className="pb-3 border-b border-slate-100">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-blue-600 text-white font-mono text-xs">GET</Badge>
+                      <CardTitle className="text-base sm:text-lg font-bold text-slate-900 font-mono">
+                        9. /get_lead
+                      </CardTitle>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="border-blue-300 text-blue-800 bg-blue-50 text-xs w-fit"
+                    >
+                      Leitura Pontual (ID ou E-mail)
+                    </Badge>
+                  </div>
+                  <CardDescription className="text-xs text-slate-500 mt-1">
+                    Retorna os dados cadastrais sanitizados de um lead individual pelo seu ID único
+                    de registro ou pelo seu e-mail cadastrado.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-4 space-y-4">
+                  {/* Tabela de Query Parameters */}
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide mb-2">
+                      Parâmetros de Consulta (Query Params)
+                    </h3>
+                    <div className="overflow-x-auto rounded-lg border border-slate-200">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-200 bg-slate-50/90 font-medium text-slate-600">
+                            <th className="py-2.5 px-3">Parâmetro</th>
+                            <th className="py-2.5 px-3">Tipo</th>
+                            <th className="py-2.5 px-3">Obrigatoriedade</th>
+                            <th className="py-2.5 px-3">Regras / Descrição</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-sans">
+                          <tr>
+                            <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                              id
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-500">string (query)</td>
+                            <td className="py-2.5 px-3">
+                              <Badge className="bg-slate-100 text-slate-700 border-slate-200 text-[10px]">
+                                Condicional
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600">
+                              ID do lead gerado no momento da criação. Possui prioridade sobre o
+                              e-mail se ambos forem enviados.
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                              email
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-500">string (query)</td>
+                            <td className="py-2.5 px-3">
+                              <Badge className="bg-slate-100 text-slate-700 border-slate-200 text-[10px]">
+                                Condicional
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600">
+                              Endereço de e-mail do lead. Utilizado quando o ID não é conhecido.
+                              Retorna o lead mais recente associado ao e-mail.
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Regra de Resolução e Não Encontrado */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                    <div className="p-3 rounded-lg border border-blue-100 bg-blue-50/60 text-xs text-blue-950 space-y-1.5">
+                      <div className="flex items-center gap-1.5 font-bold text-blue-900">
+                        <CheckCircle2 className="h-4 w-4 text-blue-700" />
+                        <span>Resolução de Prioridade</span>
+                      </div>
+                      <p className="text-slate-600 leading-relaxed text-xs">
+                        Se ambos <code className="font-mono">id</code> e{' '}
+                        <code className="font-mono">email</code> forem informados, a busca por{' '}
+                        <strong>ID tem precedência estrita</strong>. Se nenhum for fornecido, a API
+                        retorna HTTP 400 com <code className="font-mono">VALIDATION_ERROR</code>.
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 space-y-1.5">
+                      <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                        <ShieldCheck className="h-4 w-4 text-[#0F766E]" />
+                        <span>Tratamento Quando Não Encontrado</span>
+                      </div>
+                      <p className="text-slate-600 leading-relaxed text-xs">
+                        Quando nenhum lead corresponder ao ID ou e-mail fornecido, a resposta
+                        retorna <strong>HTTP 200 OK</strong> com{' '}
+                        <code className="font-mono font-semibold">{`{ "ok": true, "data": { "lead": null } }`}</code>
+                        , permitindo que o Consultor tome a decisão de fluxo sem erros de
+                        transporte.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Abas com Exemplos */}
+                  <Tabs defaultValue="res200" className="w-full">
+                    <TabsList className="bg-slate-100 border border-slate-200 text-xs">
+                      <TabsTrigger value="res200" className="text-xs">
+                        200 Encontrado
+                      </TabsTrigger>
+                      <TabsTrigger value="resNull" className="text-xs">
+                        200 Não Encontrado (null)
+                      </TabsTrigger>
+                      <TabsTrigger value="curlId" className="text-xs">
+                        cURL por ID
+                      </TabsTrigger>
+                      <TabsTrigger value="curlEmail" className="text-xs">
+                        cURL por E-mail
+                      </TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="res200">
+                      <div className="rounded-lg border border-blue-300 bg-slate-950 p-3 relative">
+                        <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-800">
+                          <Badge className="bg-blue-600 text-white font-mono text-[10px]">
+                            HTTP 200 OK
+                          </Badge>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              copyToClipboard(getLeadSuccess200, 'Resposta GET /get_lead')
+                            }
+                            className="h-6 text-xs text-blue-400 hover:text-blue-300 hover:bg-slate-800"
+                          >
+                            {copiedSnippet === 'Resposta GET /get_lead' ? (
+                              <Check className="h-3 w-3 mr-1" />
+                            ) : (
+                              <Copy className="h-3 w-3 mr-1" />
+                            )}
+                            {copiedSnippet === 'Resposta GET /get_lead' ? 'Copiado!' : 'Copiar'}
+                          </Button>
+                        </div>
+                        <pre className="font-mono text-xs text-blue-300 overflow-x-auto whitespace-pre max-h-[380px]">
+                          {getLeadSuccess200}
+                        </pre>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="resNull">
+                      <div className="rounded-lg border border-slate-700 bg-slate-950 p-3 relative">
+                        <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-800">
+                          <Badge className="bg-slate-700 text-slate-200 font-mono text-[10px]">
+                            HTTP 200 OK (lead: null)
+                          </Badge>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              copyToClipboard(getLeadNotFound200, 'Resposta GET /get_lead null')
+                            }
+                            className="h-6 text-xs text-slate-400 hover:text-slate-300 hover:bg-slate-800"
+                          >
+                            {copiedSnippet === 'Resposta GET /get_lead null' ? (
+                              <Check className="h-3 w-3 mr-1" />
+                            ) : (
+                              <Copy className="h-3 w-3 mr-1" />
+                            )}
+                            {copiedSnippet === 'Resposta GET /get_lead null'
+                              ? 'Copiado!'
+                              : 'Copiar'}
+                          </Button>
+                        </div>
+                        <pre className="font-mono text-xs text-slate-300 overflow-x-auto whitespace-pre">
+                          {getLeadNotFound200}
+                        </pre>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="curlId">
+                      <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 relative">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard(curlGetLeadById, 'cURL get_lead por ID')}
+                          className="absolute top-2 right-2 h-7 text-xs text-blue-400 hover:text-blue-300 hover:bg-slate-800"
+                        >
+                          {copiedSnippet === 'cURL get_lead por ID' ? (
+                            <Check className="h-3.5 w-3.5 mr-1" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5 mr-1" />
+                          )}
+                          {copiedSnippet === 'cURL get_lead por ID' ? 'Copiado!' : 'Copiar'}
+                        </Button>
+                        <pre className="font-mono text-xs text-slate-200 overflow-x-auto whitespace-pre pt-5 sm:pt-0">
+                          {curlGetLeadById}
+                        </pre>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="curlEmail">
+                      <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 relative">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            copyToClipboard(curlGetLeadByEmail, 'cURL get_lead por E-mail')
+                          }
+                          className="absolute top-2 right-2 h-7 text-xs text-blue-400 hover:text-blue-300 hover:bg-slate-800"
+                        >
+                          {copiedSnippet === 'cURL get_lead por E-mail' ? (
+                            <Check className="h-3.5 w-3.5 mr-1" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5 mr-1" />
+                          )}
+                          {copiedSnippet === 'cURL get_lead por E-mail' ? 'Copiado!' : 'Copiar'}
+                        </Button>
+                        <pre className="font-mono text-xs text-slate-200 overflow-x-auto whitespace-pre pt-5 sm:pt-0">
+                          {curlGetLeadByEmail}
+                        </pre>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                </CardContent>
+              </Card>
+            </section>
+
             {/* SEÇÃO 5: ENVELOPE PADRÃO DE RESPOSTA */}
             <section id="envelope-respostas" className="scroll-mt-20">
               <Card className="border-slate-200 bg-white shadow-2xs">
@@ -2037,7 +2618,7 @@ def criar_lead(dados_lead):
                   <div className="flex items-center gap-2">
                     <Layers className="h-5 w-5 text-[#0F766E]" />
                     <CardTitle className="text-lg font-bold text-slate-900">
-                      8. Envelope Padrão de Resposta (V1 & V2)
+                      10. Envelope Padrão de Resposta (V1 & V2)
                     </CardTitle>
                   </div>
                   <CardDescription className="text-xs text-slate-500">
@@ -2113,7 +2694,7 @@ def criar_lead(dados_lead):
                   <div className="flex items-center gap-2">
                     <ShieldAlert className="h-5 w-5 text-red-600" />
                     <CardTitle className="text-lg font-bold text-slate-900">
-                      9. Erros e Códigos Estáveis
+                      11. Erros e Códigos Estáveis
                     </CardTitle>
                   </div>
                   <CardDescription className="text-xs text-slate-500">
@@ -2262,7 +2843,7 @@ def criar_lead(dados_lead):
                   <div className="flex items-center gap-2">
                     <RefreshCw className="h-5 w-5 text-[#0F766E]" />
                     <CardTitle className="text-lg font-bold text-slate-900">
-                      10. Política de Idempotência
+                      12. Política de Idempotência
                     </CardTitle>
                   </div>
                   <CardDescription className="text-xs text-slate-500">
@@ -2399,7 +2980,7 @@ def criar_lead(dados_lead):
                   <div className="flex items-center gap-2">
                     <Code2 className="h-5 w-5 text-[#0F766E]" />
                     <CardTitle className="text-lg font-bold text-slate-900">
-                      11. Exemplos Completos de Integração
+                      13. Exemplos Completos de Integração
                     </CardTitle>
                   </div>
                   <CardDescription className="text-xs text-slate-500">
