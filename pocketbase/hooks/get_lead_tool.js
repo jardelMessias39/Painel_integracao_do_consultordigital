@@ -279,10 +279,13 @@
         }
       } else {
         // Busca por email com findRecordsByFilter ordenado por -created para pegar o lead mais recente daquele email
+        // Alinhado ao padrão operacional consolidado em list_leads e list_meetings
+        const filterParts = ['email = {:email}']
+        const filterParams = { email: targetEmail }
+        const pbFilter = filterParts.join(' && ')
+
         const records =
-          $app.findRecordsByFilter('leads', 'email = {:email}', '-created', 1, 0, {
-            email: targetEmail,
-          }) || []
+          $app.findRecordsByFilter('leads', pbFilter, '-created', 1, 0, filterParams) || []
 
         if (records.length > 0) {
           foundRecord = records[0]
