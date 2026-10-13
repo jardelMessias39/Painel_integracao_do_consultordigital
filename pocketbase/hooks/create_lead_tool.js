@@ -267,6 +267,127 @@
     }
 
     // =========================================================================
+    // CAMADA 3.5: NOTIFICAÇÃO POR E-MAIL AUTOMÁTICA DE BOAS-VINDAS AO LEAD
+    // Disparo exclusivo para leads NOVOS (HTTP 201), nunca para duplicados.
+    // Execução estritamente tolerante a falhas (try/catch fail-safe)
+    // Auditoria LGPD: registra evento técnico SEM corpo nem PII em tool_logs
+    // =========================================================================
+    const notificationService = {
+      sendWelcomeEmail: (leadData) => {
+        try {
+          const toEmail =
+            leadData && leadData.email ? String(leadData.email).trim().toLowerCase() : ''
+          if (!toEmail) {
+            console.warn(
+              '[WELCOME_EMAIL] Destinatário de e-mail ausente ou inválido. Envio ignorado.',
+            )
+            return
+          }
+
+          const nomeLead =
+            (leadData && leadData.nome ? String(leadData.nome).trim() : '') || 'Cliente'
+          const empresaLead = leadData && leadData.empresa ? String(leadData.empresa).trim() : ''
+          const telefoneLead = leadData && leadData.telefone ? String(leadData.telefone).trim() : ''
+
+          // Convenção V1: se empresa for o marcador "Pessoa física", ajustar a frase para não soar estranho
+          const isPessoaFisica =
+            !empresaLead ||
+            empresaLead.toLowerCase() === 'pessoa física' ||
+            empresaLead.toLowerCase() === 'pessoa fisica'
+
+          // Regra de contato: email ou WhatsApp telefone (se fornecido)
+          let contactChannelsText = 'pelo e-mail ' + toEmail
+          if (telefoneLead) {
+            contactChannelsText = 'pelo e-mail ' + toEmail + ' ou pelo WhatsApp ' + telefoneLead
+          }
+
+          // Frase de auxílio com empresa ou pessoa física
+          let helpTargetPhrase = ''
+          if (isPessoaFisica) {
+            helpTargetPhrase = 'como podemos ajudar você a conectar e otimizar seus processos'
+          } else {
+            helpTargetPhrase =
+              'como podemos ajudar a ' + empresaLead + ' a conectar e otimizar seus processos'
+          }
+
+          const subject = 'Recebemos seu contato — obrigado, ' + nomeLead + '!'
+
+          // Corpo em texto puro
+          const textBody =
+            'Olá, ' +
+            nomeLead +
+            '!\n\n' +
+            'Muito obrigado pelo seu contato! Recebemos sua mensagem com atenção e já registramos sua solicitação em nosso sistema.\n\n' +
+            'Nos próximos momentos, o consultor Jardel Messias vai analisar sua necessidade e entrará em contato ' +
+            contactChannelsText +
+            ' para conversar sobre ' +
+            helpTargetPhrase +
+            '.\n\n' +
+            'Enquanto isso, se quiser conhecer um pouco mais do nosso trabalho, visite https://www.jardelmessias.com.br.\n\n' +
+            'Atenciosamente,\n' +
+            'Jardel Messias — Consultor Digital\n' +
+            'https://www.jardelmessias.com.br'
+
+          // Corpo em HTML limpo e profissional
+          const htmlBody =
+            '<div style="font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b; line-height: 1.6; font-size: 15px;">' +
+            '<div style="background: #0f766e; padding: 24px; border-radius: 8px 8px 0 0; color: #ffffff;">' +
+            '<h2 style="margin: 0; font-size: 20px; font-weight: 600;">Recebemos seu contato</h2>' +
+            '<p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.9;">Jardel Messias — Consultor Digital</p>' +
+            '</div>' +
+            '<div style="background: #ffffff; padding: 28px 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">' +
+            '<p style="margin-top: 0; font-size: 16px;">Olá, <strong>' +
+            nomeLead +
+            '</strong>!</p>' +
+            '<p>Muito obrigado pelo seu contato! Recebemos sua mensagem com atenção e já registramos sua solicitação em nosso sistema.</p>' +
+            '<p>Nos próximos momentos, o consultor <strong>Jardel Messias</strong> vai analisar sua necessidade e entrará em contato ' +
+            contactChannelsText +
+            ' para conversar sobre ' +
+            helpTargetPhrase +
+            '.</p>' +
+            '<div style="background: #f8fafc; border-left: 4px solid #0f766e; padding: 12px 16px; margin: 24px 0; border-radius: 4px;">' +
+            '<p style="margin: 0; font-size: 14px; color: #334155;">Enquanto isso, se quiser conhecer um pouco mais do nosso trabalho, visite <a href="https://www.jardelmessias.com.br" style="color: #0f766e; text-decoration: underline; font-weight: 500;">www.jardelmessias.com.br</a>.</p>' +
+            '</div>' +
+            '<div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #e2e8f0;">' +
+            '<p style="margin: 0; font-weight: 600; color: #0f172a;">Atenciosamente,</p>' +
+            '<p style="margin: 4px 0 0 0; color: #0f766e; font-weight: 600;">Jardel Messias — Consultor Digital</p>' +
+            '<p style="margin: 2px 0 0 0; font-size: 13px;"><a href="https://www.jardelmessias.com.br" style="color: #64748b; text-decoration: none;">https://www.jardelmessias.com.br</a></p>' +
+            '</div>' +
+            '</div>' +
+            '</div>'
+
+          // Remetente padrão
+          const settings = $app.settings()
+          const senderAddress =
+            (settings && settings.meta && settings.meta.senderAddress) ||
+            (settings && settings.smtp && settings.smtp.username) ||
+            'noreply@mail.goskip.dev'
+          const senderName =
+            (settings && settings.meta && settings.meta.senderName) ||
+            'Jardel Messias — Consultor Digital'
+
+          const message = new MailerMessage({
+            from: {
+              address: senderAddress,
+              name: senderName,
+            },
+            to: [{ address: toEmail }],
+            subject: subject,
+            text: textBody,
+            html: htmlBody,
+          })
+
+          $app.newMailClient().send(message)
+          console.log('[WELCOME_EMAIL] E-mail de boas-vindas enviado com sucesso para: ' + toEmail)
+        } catch (mailErr) {
+          // Tolerância total a falhas: log técnico sem quebrar o fluxo
+          const errStr = mailErr && mailErr.message ? String(mailErr.message) : String(mailErr)
+          console.error('[WELCOME_EMAIL_ERROR] Falha ao enviar e-mail de boas-vindas:', errStr)
+        }
+      },
+    }
+
+    // =========================================================================
     // CAMADA 4: DOMÍNIO (Regras de Negócio Puras da Capability create_lead)
     // Independente de HTTP e de PocketBase:
     // Recebe dados validados + porta/repositório e retorna resultado de domínio.
@@ -484,7 +605,7 @@
       },
 
       // Executa a lógica de negócio de criação com política de idempotência (email + empresa)
-      execute: (sanitizedData, repository, reqId) => {
+      execute: (sanitizedData, repository, notifier, reqId) => {
         // 1. Idempotência: verificar existência prévia
         const existingLead = repository.findLeadByEmailEmpresa(
           sanitizedData.email,
@@ -503,6 +624,19 @@
 
         // 2. Novo lead
         const createdRecord = repository.insertLead(sanitizedData, reqId)
+
+        // 3. Envio automático de e-mail de boas-vindas ao próprio lead (apenas leads novos / HTTP 201)
+        // Execução tolerante a falhas (try/catch fail-safe): se o SMTP falhar, NUNCA quebra a resposta canônica.
+        if (notifier && typeof notifier.sendWelcomeEmail === 'function') {
+          try {
+            notifier.sendWelcomeEmail(sanitizedData)
+          } catch (notifErr) {
+            console.error(
+              '[WELCOME_EMAIL_DISPATCH_ERROR]',
+              notifErr && notifErr.message ? notifErr.message : notifErr,
+            )
+          }
+        }
 
         return {
           status: 201,
@@ -548,8 +682,9 @@
         validate: (input) => createLeadDomainService.validateAndSanitize(input),
         run: (sanitizedData, context) => {
           const repo = (context && context.repository) || leadRepository
+          const notif = (context && context.notifier) || notificationService
           const rId = (context && context.requestId) || requestId
-          return createLeadDomainService.execute(sanitizedData, repo, rId)
+          return createLeadDomainService.execute(sanitizedData, repo, notif, rId)
         },
       },
     }
@@ -580,6 +715,7 @@
     try {
       const domainResult = tool.run(validationResult.sanitized, {
         repository: leadRepository,
+        notifier: notificationService,
         requestId: requestId,
       })
 
