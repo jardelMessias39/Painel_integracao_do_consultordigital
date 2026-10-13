@@ -45,6 +45,7 @@ const SECTIONS: NavSection[] = [
   { id: 'create-lead', label: 'create_lead', badge: 'POST' },
   { id: 'schedule-meeting', label: 'schedule_meeting', badge: 'POST' },
   { id: 'send-email', label: 'send_email', badge: 'POST' },
+  { id: 'list-meetings', label: 'list_meetings', badge: 'GET' },
   { id: 'envelope-respostas', label: 'Envelope Padrão' },
   { id: 'erros-codigos', label: 'Erros e Códigos' },
   { id: 'idempotencia', label: 'Idempotência' },
@@ -62,12 +63,14 @@ export default function Documentacao() {
   const canonicalCreateLeadUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicEndpointPath}`
   const canonicalScheduleMeetingUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicScheduleMeetingPath}`
   const canonicalSendEmailUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicSendEmailPath}`
+  const canonicalListMeetingsUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicListMeetingsPath}`
   const canonicalToolsRegistryUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicToolsRegistryPath}`
 
   const internalBaseUrl = INTEGRATION_CONFIG.backendUrl
   const internalCreateLeadUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalEndpointPath}`
   const internalScheduleMeetingUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalScheduleMeetingPath}`
   const internalSendEmailUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalSendEmailPath}`
+  const internalListMeetingsUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalListMeetingsPath}`
   const internalToolsRegistryUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalToolsRegistryPath}`
 
   const copyToClipboard = (text: string, label: string) => {
@@ -235,7 +238,7 @@ export default function Documentacao() {
     {
       ok: true,
       data: {
-        total: 3,
+        total: 4,
         tools: [
           {
             nome: 'create_lead',
@@ -284,6 +287,53 @@ export default function Documentacao() {
             campos_opcionais: ['idempotency_key'],
             idempotencia: 'idempotency_key do chamador',
             rate_limit: '30 req/min',
+          },
+          {
+            nome: 'list_meetings',
+            metodo: 'GET',
+            caminho: '/v1/tools/list_meetings',
+            versao: 'v1',
+            descricao:
+              'Consulta e lista reuniões agendadas com filtros por e-mail, status e período futuro',
+            campos_obrigatorios: [],
+            campos_opcionais: ['email', 'status', 'futuras_apenas', 'limite'],
+            idempotencia: 'não aplicável (leitura)',
+            rate_limit: '120 req/min',
+          },
+        ],
+      },
+    },
+    null,
+    2,
+  )
+
+  const listMeetingsSuccess200 = JSON.stringify(
+    {
+      ok: true,
+      data: {
+        total: 2,
+        reunioes: [
+          {
+            id: 'd5ctzgwi356jeag',
+            nome: 'Teste Controlado',
+            empresa: 'Pessoa física',
+            email: 'teste.controlado@exemplo.com',
+            data_hora: '2026-11-25 18:00:00.000Z',
+            assunto: 'Teste controlado pos-rotacao',
+            observacoes: 'Validacao das tres protecoes',
+            status: 'confirmada',
+            created: '2026-10-12 16:27:21.779Z',
+          },
+          {
+            id: 'jdhk5guxf2owokw',
+            nome: 'Teste Schedule V2',
+            empresa: 'Empresa Schedule V2',
+            email: 'schedule.v2.teste@teste.com',
+            data_hora: '2026-10-01 18:00:00.000Z',
+            assunto: 'Sistema Web para gerenciamento de leads',
+            observacoes: 'Quero discutir automação e integração com WhatsApp.',
+            status: 'confirmada',
+            created: '2026-09-30 19:17:49.199Z',
           },
         ],
       },
@@ -370,6 +420,9 @@ export default function Documentacao() {
   -H "X-API-Key: sk-live_********************" \\
   -d '${sendEmailPayload}'`
 
+  const curlListMeetings = `curl -X GET "${canonicalListMeetingsUrl}?email=teste.controlado%40exemplo.com&status=confirmada&futuras_apenas=true&limite=10" \\
+  -H "X-API-Key: sk-live_********************"`
+
   const curlToolsRegistry = `curl -X GET "${canonicalToolsRegistryUrl}" \\
   -H "X-API-Key: sk-live_********************"`
 
@@ -445,7 +498,29 @@ async function enviarEmail(emailData) {
   });
 }
 
-// 4. Descobrir catálogo de ferramentas registradas (dinâmico, sem redeploy)
+// 4. Consultar reuniões (list_meetings - leitura)
+async function listarReunioes(filtros = {}) {
+  const params = new URLSearchParams();
+  if (filtros.email) params.set('email', filtros.email);
+  if (filtros.status) params.set('status', filtros.status);
+  if (filtros.futuras_apenas !== undefined) params.set('futuras_apenas', String(filtros.futuras_apenas));
+  if (filtros.limite) params.set('limite', String(filtros.limite));
+
+  const url = \`\${'${canonicalListMeetingsUrl}'}?\${params.toString()}\`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'X-API-Key': API_KEY,
+    },
+  });
+  const result = await response.json();
+  if (!result.ok) {
+    throw new Error(\`[\${result.error.code}] \${result.error.message}\`);
+  }
+  return result.data; // { total: N, reunioes: [...] }
+}
+
+// 5. Descobrir catálogo de ferramentas registradas (dinâmico, sem redeploy)
 async function listarToolsDisponiveis() {
   const response = await fetch('${canonicalToolsRegistryUrl}', {
     method: 'GET',
@@ -530,7 +605,7 @@ def criar_lead(dados_lead):
             <Server className="h-3.5 w-3.5 text-[#0F766E]" />
             <span>Documentação da API</span>
             <Badge className="bg-teal-100 text-[#0F766E] hover:bg-teal-100 text-[10px] py-0 px-1.5 font-mono">
-              4 Endpoints
+              5 Endpoints
             </Badge>
           </button>
 
@@ -650,26 +725,26 @@ def criar_lead(dados_lead):
                     consultores.
                   </p>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
-                    <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50 space-y-1.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-1">
+                    <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 space-y-1.5">
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-slate-900 text-xs flex items-center gap-1.5">
                           <Boxes className="h-3.5 w-3.5 text-[#0F766E]" />
                           GET /tools
                         </span>
                         <Badge className="bg-cyan-100 text-cyan-800 border-cyan-200 text-[10px]">
-                          V2 Descoberta
+                          V2 Catálogo
                         </Badge>
                       </div>
                       <p className="text-slate-600 text-xs">
-                        Índice canônico de descoberta das tools disponíveis para os chamadores.
+                        Índice canônico de descoberta das tools disponíveis.
                       </p>
-                      <code className="text-[11px] font-mono text-slate-800 bg-white p-1 rounded border border-slate-200 block truncate">
+                      <code className="text-[10px] font-mono text-slate-800 bg-white p-1 rounded border border-slate-200 block truncate">
                         /api/backend/v1/tools
                       </code>
                     </div>
 
-                    <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50 space-y-1.5">
+                    <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 space-y-1.5">
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-slate-900 text-xs flex items-center gap-1.5">
                           <Send className="h-3.5 w-3.5 text-[#0F766E]" />
@@ -680,33 +755,32 @@ def criar_lead(dados_lead):
                         </Badge>
                       </div>
                       <p className="text-slate-600 text-xs">
-                        Registra lead comercial. Idempotência estrita por{' '}
-                        <strong>email + empresa</strong>.
+                        Registra lead. Idempotência por <strong>email + empresa</strong>.
                       </p>
-                      <code className="text-[11px] font-mono text-slate-800 bg-white p-1 rounded border border-slate-200 block truncate">
-                        /api/backend/v1/tools/create_lead
+                      <code className="text-[10px] font-mono text-slate-800 bg-white p-1 rounded border border-slate-200 block truncate">
+                        .../create_lead
                       </code>
                     </div>
 
-                    <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50 space-y-1.5">
+                    <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 space-y-1.5">
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-slate-900 text-xs flex items-center gap-1.5">
                           <Calendar className="h-3.5 w-3.5 text-[#0F766E]" />
                           POST /schedule_meeting
                         </span>
                         <Badge className="bg-teal-100 text-teal-800 border-teal-200 text-[10px]">
-                          V2 Reuniões
+                          V2 Agendamento
                         </Badge>
                       </div>
                       <p className="text-slate-600 text-xs">
-                        Agenda reunião técnica. Idempotência por <strong>email + data_hora</strong>.
+                        Agenda reunião. Idempotência por <strong>email + data_hora</strong>.
                       </p>
-                      <code className="text-[11px] font-mono text-slate-800 bg-white p-1 rounded border border-slate-200 block truncate">
-                        /api/backend/v1/tools/schedule_meeting
+                      <code className="text-[10px] font-mono text-slate-800 bg-white p-1 rounded border border-slate-200 block truncate">
+                        .../schedule_meeting
                       </code>
                     </div>
 
-                    <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50 space-y-1.5">
+                    <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 space-y-1.5">
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-slate-900 text-xs flex items-center gap-1.5">
                           <Mail className="h-3.5 w-3.5 text-[#0F766E]" />
@@ -717,11 +791,28 @@ def criar_lead(dados_lead):
                         </Badge>
                       </div>
                       <p className="text-slate-600 text-xs">
-                        Envio real via SMTP. Idempotência opcional por{' '}
-                        <strong>idempotency_key</strong>.
+                        Envio real SMTP. Idempotência por <strong>idempotency_key</strong>.
                       </p>
-                      <code className="text-[11px] font-mono text-slate-800 bg-white p-1 rounded border border-slate-200 block truncate">
-                        /api/backend/v1/tools/send_email
+                      <code className="text-[10px] font-mono text-slate-800 bg-white p-1 rounded border border-slate-200 block truncate">
+                        .../send_email
+                      </code>
+                    </div>
+
+                    <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-slate-900 text-xs flex items-center gap-1.5">
+                          <Calendar className="h-3.5 w-3.5 text-blue-600" />
+                          GET /list_meetings
+                        </span>
+                        <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-[10px]">
+                          V2 Consulta
+                        </Badge>
+                      </div>
+                      <p className="text-slate-600 text-xs">
+                        Consulta reuniões por email, status e período futuro.
+                      </p>
+                      <code className="text-[10px] font-mono text-slate-800 bg-white p-1 rounded border border-slate-200 block truncate">
+                        .../list_meetings
                       </code>
                     </div>
                   </div>
@@ -832,8 +923,9 @@ def criar_lead(dados_lead):
                         A Camada aplica limites em memória por chave: <strong>60 req/min</strong>{' '}
                         para o catálogo <code className="font-mono">/tools</code>,{' '}
                         <strong>120 req/min</strong> para{' '}
-                        <code className="font-mono">create_lead</code> e{' '}
-                        <code className="font-mono">schedule_meeting</code>, e{' '}
+                        <code className="font-mono">create_lead</code>,{' '}
+                        <code className="font-mono">schedule_meeting</code> e{' '}
+                        <code className="font-mono">list_meetings</code>, e{' '}
                         <strong>30 req/min</strong> para{' '}
                         <code className="font-mono">send_email</code>. Se excedido, o servidor
                         retorna HTTP 429 com código <code className="font-mono">RATE_LIMITED</code>.
@@ -1716,6 +1808,228 @@ def criar_lead(dados_lead):
               </Card>
             </section>
 
+            {/* SEÇÃO 4.2: ENDPOINT list_meetings (NOVO - V2 LEITURA) */}
+            <section id="list-meetings" className="scroll-mt-20">
+              <Card className="border-slate-200 bg-white shadow-2xs">
+                <CardHeader className="pb-3 border-b border-slate-100">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-blue-600 text-white font-mono text-xs">GET</Badge>
+                      <CardTitle className="text-base sm:text-lg font-bold text-slate-900 font-mono">
+                        7. /list_meetings
+                      </CardTitle>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="border-blue-300 text-blue-800 bg-blue-50 text-xs w-fit"
+                    >
+                      Leitura Segura (LGPD &amp; Sem Mutação)
+                    </Badge>
+                  </div>
+                  <CardDescription className="text-xs text-slate-500 mt-1">
+                    Permite que o Consultor Digital consulte a agenda de reuniões de um contato ou
+                    empresa em tempo real, respondendo com precisão se já existem compromissos
+                    agendados em vez de apenas registrar cegamente.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-4 space-y-4">
+                  {/* Tabela de Query Parameters */}
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide mb-2">
+                      Parâmetros de Consulta (Query Params)
+                    </h3>
+                    <div className="overflow-x-auto rounded-lg border border-slate-200">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-200 bg-slate-50/90 font-medium text-slate-600">
+                            <th className="py-2.5 px-3">Parâmetro</th>
+                            <th className="py-2.5 px-3">Tipo</th>
+                            <th className="py-2.5 px-3">Obrigatoriedade</th>
+                            <th className="py-2.5 px-3">Regras / Descrição</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-sans">
+                          <tr>
+                            <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                              email
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-500">string (query)</td>
+                            <td className="py-2.5 px-3">
+                              <Badge className="bg-slate-100 text-slate-700 border-slate-200 text-[10px]">
+                                Opcional
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600">
+                              Filtra reuniões de um contato específico pelo endereço de e-mail (caso
+                              de uso canônico do Consultor:{' '}
+                              <em>&quot;quais reuniões esse lead já tem?&quot;</em>). Valida formato
+                              RFC de e-mail se fornecido.
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                              status
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-500">string (query)</td>
+                            <td className="py-2.5 px-3">
+                              <Badge className="bg-slate-100 text-slate-700 border-slate-200 text-[10px]">
+                                Opcional
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600">
+                              Filtra por status da reunião. Valores estritos permitidos:{' '}
+                              <code className="font-mono text-slate-800 font-semibold">
+                                pendente | confirmada | realizada | cancelada
+                              </code>
+                              . Qualquer outro valor gera erro{' '}
+                              <code className="font-mono">VALIDATION_ERROR</code>.
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                              futuras_apenas
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-500">
+                              boolean / string (query)
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <Badge className="bg-slate-100 text-slate-700 border-slate-200 text-[10px]">
+                                Opcional
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600">
+                              Quando <code className="font-mono text-slate-800">true</code> ou{' '}
+                              <code className="font-mono text-slate-800">1</code>, filtra
+                              exclusivamente reuniões cuja{' '}
+                              <code className="font-mono">data_hora &gt;= momento atual</code>,
+                              ordenadas de forma crescente. Default:{' '}
+                              <code className="font-mono">false</code>.
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                              limite
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-500">number (query)</td>
+                            <td className="py-2.5 px-3">
+                              <Badge className="bg-slate-100 text-slate-700 border-slate-200 text-[10px]">
+                                Opcional (Default: 10)
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600">
+                              Quantidade máxima de reuniões a retornar no array (inteiro entre{' '}
+                              <strong>1 e 50</strong>). O campo{' '}
+                              <code className="font-mono">total</code> da resposta indica a
+                              quantidade efetivamente retornada.
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Detalhes de LGPD e Ordenação */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                    <div className="p-3 rounded-lg border border-blue-100 bg-blue-50/60 text-xs text-blue-950 space-y-1.5">
+                      <div className="flex items-center gap-1.5 font-bold text-blue-900">
+                        <Calendar className="h-4 w-4 text-blue-700" />
+                        <span>Regra de Ordenação Natural</span>
+                      </div>
+                      <p className="text-slate-600 leading-relaxed text-xs">
+                        Para reuniões futuras, a ordenação é <strong>cronológica crescente</strong>{' '}
+                        (próximos compromissos primeiro). Quando consultado sem o filtro{' '}
+                        <code className="font-mono">futuras_apenas</code>, o endpoint retorna
+                        reuniões futuras primeiro (crescente) seguidas por compromissos passados
+                        mais recentes (decrescente).
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 space-y-1.5">
+                      <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                        <ShieldCheck className="h-4 w-4 text-[#0F766E]" />
+                        <span>Proteção LGPD &amp; Truncamento</span>
+                      </div>
+                      <p className="text-slate-600 leading-relaxed text-xs">
+                        A resposta sanitiza os registros expondo apenas metadados de compromisso: o
+                        campo <code className="font-mono font-semibold">observacoes</code> é
+                        automaticamente truncado a 500 caracteres, e a auditoria em{' '}
+                        <code className="font-mono font-semibold">tool_logs</code> não grava os
+                        valores dos filtros por respeito à privacidade do titular.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Abas com Exemplos */}
+                  <Tabs defaultValue="res200" className="w-full">
+                    <TabsList className="bg-slate-100 border border-slate-200 text-xs">
+                      <TabsTrigger value="res200" className="text-xs">
+                        Resposta 200 OK
+                      </TabsTrigger>
+                      <TabsTrigger value="curl" className="text-xs">
+                        cURL
+                      </TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="res200">
+                      <div className="rounded-lg border border-blue-300 bg-slate-950 p-3 relative">
+                        <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-800">
+                          <div className="flex items-center gap-2">
+                            <Badge className="bg-blue-600 text-white font-mono text-[10px]">
+                              HTTP 200 OK
+                            </Badge>
+                            <span className="text-xs text-blue-400 font-mono">
+                              total: 2 reuniões encontradas
+                            </span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              copyToClipboard(listMeetingsSuccess200, 'Resposta GET /list_meetings')
+                            }
+                            className="h-6 text-xs text-blue-400 hover:text-blue-300 hover:bg-slate-800"
+                          >
+                            {copiedSnippet === 'Resposta GET /list_meetings' ? (
+                              <Check className="h-3 w-3 mr-1" />
+                            ) : (
+                              <Copy className="h-3 w-3 mr-1" />
+                            )}
+                            {copiedSnippet === 'Resposta GET /list_meetings'
+                              ? 'Copiado!'
+                              : 'Copiar'}
+                          </Button>
+                        </div>
+                        <pre className="font-mono text-xs text-blue-300 overflow-x-auto whitespace-pre max-h-[380px]">
+                          {listMeetingsSuccess200}
+                        </pre>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="curl">
+                      <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 relative">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard(curlListMeetings, 'cURL list_meetings')}
+                          className="absolute top-2 right-2 h-7 text-xs text-blue-400 hover:text-blue-300 hover:bg-slate-800"
+                        >
+                          {copiedSnippet === 'cURL list_meetings' ? (
+                            <Check className="h-3.5 w-3.5 mr-1" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5 mr-1" />
+                          )}
+                          {copiedSnippet === 'cURL list_meetings' ? 'Copiado!' : 'Copiar'}
+                        </Button>
+                        <pre className="font-mono text-xs text-slate-200 overflow-x-auto whitespace-pre pt-5 sm:pt-0">
+                          {curlListMeetings}
+                        </pre>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                </CardContent>
+              </Card>
+            </section>
+
             {/* SEÇÃO 5: ENVELOPE PADRÃO DE RESPOSTA */}
             <section id="envelope-respostas" className="scroll-mt-20">
               <Card className="border-slate-200 bg-white shadow-2xs">
@@ -1723,7 +2037,7 @@ def criar_lead(dados_lead):
                   <div className="flex items-center gap-2">
                     <Layers className="h-5 w-5 text-[#0F766E]" />
                     <CardTitle className="text-lg font-bold text-slate-900">
-                      7. Envelope Padrão de Resposta (V1 & V2)
+                      8. Envelope Padrão de Resposta (V1 & V2)
                     </CardTitle>
                   </div>
                   <CardDescription className="text-xs text-slate-500">
@@ -1799,7 +2113,7 @@ def criar_lead(dados_lead):
                   <div className="flex items-center gap-2">
                     <ShieldAlert className="h-5 w-5 text-red-600" />
                     <CardTitle className="text-lg font-bold text-slate-900">
-                      8. Erros e Códigos Estáveis
+                      9. Erros e Códigos Estáveis
                     </CardTitle>
                   </div>
                   <CardDescription className="text-xs text-slate-500">
@@ -1948,7 +2262,7 @@ def criar_lead(dados_lead):
                   <div className="flex items-center gap-2">
                     <RefreshCw className="h-5 w-5 text-[#0F766E]" />
                     <CardTitle className="text-lg font-bold text-slate-900">
-                      9. Política de Idempotência
+                      10. Política de Idempotência
                     </CardTitle>
                   </div>
                   <CardDescription className="text-xs text-slate-500">
@@ -2085,7 +2399,7 @@ def criar_lead(dados_lead):
                   <div className="flex items-center gap-2">
                     <Code2 className="h-5 w-5 text-[#0F766E]" />
                     <CardTitle className="text-lg font-bold text-slate-900">
-                      10. Exemplos Completos de Integração
+                      11. Exemplos Completos de Integração
                     </CardTitle>
                   </div>
                   <CardDescription className="text-xs text-slate-500">
@@ -2156,7 +2470,7 @@ def criar_lead(dados_lead):
                   <div className="flex items-center gap-2">
                     <ShieldCheck className="h-5 w-5 text-[#0F766E]" />
                     <CardTitle className="text-lg font-bold text-slate-900">
-                      11. Segurança &amp; Conformidade LGPD
+                      12. Segurança &amp; Conformidade LGPD
                     </CardTitle>
                   </div>
                   <CardDescription className="text-xs text-slate-500">

@@ -74,6 +74,18 @@
         idempotencia: 'idempotency_key do chamador',
         rate_limit: '30 req/min',
       },
+      {
+        nome: 'list_meetings',
+        metodo: 'GET',
+        caminho: '/v1/tools/list_meetings',
+        versao: 'v1',
+        descricao:
+          'Consulta e lista reuniões agendadas com filtros por e-mail, status e período futuro',
+        campos_obrigatorios: [],
+        campos_opcionais: ['email', 'status', 'futuras_apenas', 'limite'],
+        idempotencia: 'não aplicável (leitura)',
+        rate_limit: '120 req/min',
+      },
     ]
 
     // =========================================================================
