@@ -24,6 +24,7 @@ import {
   Clock,
   Terminal,
   Database,
+  Cpu,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -49,6 +50,7 @@ const SECTIONS: NavSection[] = [
   { id: 'list-meetings', label: 'list_meetings', badge: 'GET' },
   { id: 'list-leads', label: 'list_leads', badge: 'GET' },
   { id: 'get-lead', label: 'get_lead', badge: 'GET' },
+  { id: 'adaptador-mcp', label: 'Adaptador MCP', badge: 'JSON-RPC' },
   { id: 'envelope-respostas', label: 'Envelope Padrão' },
   { id: 'erros-codigos', label: 'Erros e Códigos' },
   { id: 'idempotencia', label: 'Idempotência' },
@@ -70,6 +72,7 @@ export default function Documentacao() {
   const canonicalListLeadsUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicListLeadsPath}`
   const canonicalGetLeadUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicGetLeadPath}`
   const canonicalToolsRegistryUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicToolsRegistryPath}`
+  const canonicalMcpUrl = `${publicBaseUrl}${INTEGRATION_CONFIG.publicMcpAdapterPath}`
 
   const internalBaseUrl = INTEGRATION_CONFIG.backendUrl
   const internalCreateLeadUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalEndpointPath}`
@@ -79,6 +82,7 @@ export default function Documentacao() {
   const internalListLeadsUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalListLeadsPath}`
   const internalGetLeadUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalGetLeadPath}`
   const internalToolsRegistryUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalToolsRegistryPath}`
+  const internalMcpUrl = `${internalBaseUrl}${INTEGRATION_CONFIG.internalMcpAdapterPath}`
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text)
@@ -245,7 +249,7 @@ export default function Documentacao() {
     {
       ok: true,
       data: {
-        total: 6,
+        total: 8,
         tools: [
           {
             nome: 'create_lead',
@@ -329,6 +333,30 @@ export default function Documentacao() {
             campos_obrigatorios: [],
             campos_opcionais: ['id', 'email'],
             idempotencia: 'não aplicável (leitura)',
+            rate_limit: '120 req/min',
+          },
+          {
+            nome: 'tools_registry',
+            metodo: 'GET',
+            caminho: '/v1/tools',
+            versao: 'v1',
+            descricao:
+              'Índice canônico de descoberta e metadados das ferramentas da Camada de Integração',
+            campos_obrigatorios: [],
+            campos_opcionais: [],
+            idempotencia: 'não aplicável (leitura)',
+            rate_limit: '60 req/min',
+          },
+          {
+            nome: 'mcp_adapter',
+            metodo: 'POST',
+            caminho: '/v1/mcp',
+            versao: 'v1',
+            descricao:
+              'Adaptador MCP (Model Context Protocol via JSON-RPC 2.0) sobre o catálogo canônico de ferramentas',
+            campos_obrigatorios: ['jsonrpc', 'method'],
+            campos_opcionais: ['id', 'params'],
+            idempotencia: 'definida por método/tool chamada',
             rate_limit: '120 req/min',
           },
         ],
@@ -459,6 +487,269 @@ export default function Documentacao() {
     null,
     2,
   )
+
+  // --- Exemplos MCP JSON-RPC 2.0 ---
+  const mcpInitializePayload = JSON.stringify(
+    {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: {
+          name: 'claude-desktop-client',
+          version: '1.0.0',
+        },
+      },
+    },
+    null,
+    2,
+  )
+
+  const mcpInitializeResponse = JSON.stringify(
+    {
+      jsonrpc: '2.0',
+      id: 1,
+      result: {
+        protocolVersion: '2024-11-05',
+        capabilities: {
+          tools: {
+            listChanged: false,
+          },
+        },
+        serverInfo: {
+          name: 'consultor-integration-layer',
+          version: '2.4.0',
+        },
+        instructions:
+          'Adaptador MCP oficial da Camada de Integração do Consultor Digital. Reutiliza o mesmo catálogo canônico das 7 ferramentas validadas em produção com autenticação X-API-Key fail-closed e auditoria LGPD.',
+      },
+    },
+    null,
+    2,
+  )
+
+  const mcpToolsListPayload = JSON.stringify(
+    {
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/list',
+      params: {},
+    },
+    null,
+    2,
+  )
+
+  const mcpToolsListResponse = JSON.stringify(
+    {
+      jsonrpc: '2.0',
+      id: 2,
+      result: {
+        tools: [
+          {
+            name: 'create_lead',
+            description:
+              'Registra ou atualiza um lead comercial qualificado pelo Consultor Digital. Idempotência por email+empresa.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                nome: { type: 'string', description: 'Nome completo do contato do lead' },
+                empresa: { type: 'string', description: "Razão social ou 'Pessoa física'" },
+                email: { type: 'string', description: 'Endereço de e-mail válido' },
+                telefone: { type: 'string', description: 'Telefone com DDD' },
+                necessidade_identificada: { type: 'string', description: 'Diagnóstico da dor' },
+                estagio_do_lead: {
+                  type: 'string',
+                  enum: ['novo', 'qualificado', 'proposta', 'descartado'],
+                  default: 'novo',
+                },
+              },
+              required: [
+                'nome',
+                'empresa',
+                'email',
+                'telefone',
+                'necessidade_identificada',
+                'estagio_do_lead',
+              ],
+            },
+          },
+          {
+            name: 'schedule_meeting',
+            description:
+              'Registra uma solicitação interna de reunião com o consultor com status inicial pendente.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                nome: { type: 'string' },
+                empresa: { type: 'string' },
+                email: { type: 'string' },
+                telefone: { type: 'string' },
+                data_hora: { type: 'string' },
+                assunto: { type: 'string' },
+              },
+              required: ['nome', 'empresa', 'email', 'telefone', 'data_hora', 'assunto'],
+            },
+          },
+          {
+            name: 'send_email',
+            description:
+              'Envia um e-mail transacional real para o destinatário através do serviço padrão do servidor.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                destinatario: { type: 'string' },
+                assunto: { type: 'string' },
+                corpo: { type: 'string' },
+                idempotency_key: { type: 'string' },
+              },
+              required: ['destinatario', 'assunto', 'corpo'],
+            },
+          },
+          {
+            name: 'list_meetings',
+            description:
+              'Consulta e lista reuniões agendadas com filtros por e-mail, status e período futuro.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                email: { type: 'string' },
+                status: {
+                  type: 'string',
+                  enum: ['pendente', 'confirmada', 'realizada', 'cancelada'],
+                },
+                futuras_apenas: { type: 'boolean' },
+                limite: { type: 'integer' },
+              },
+            },
+          },
+          {
+            name: 'list_leads',
+            description:
+              'Consulta e lista leads comerciais qualificados com filtros por e-mail, estágio, empresa e limite.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                email: { type: 'string' },
+                estagio_do_lead: {
+                  type: 'string',
+                  enum: ['novo', 'qualificado', 'proposta', 'descartado'],
+                },
+                empresa: { type: 'string' },
+                limite: { type: 'integer' },
+              },
+            },
+          },
+          {
+            name: 'get_lead',
+            description:
+              'Consulta os detalhes sanitizados de um lead específico a partir do seu id ou endereço de e-mail.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                email: { type: 'string' },
+              },
+            },
+          },
+        ],
+      },
+    },
+    null,
+    2,
+  )
+
+  const mcpToolsCallPayload = JSON.stringify(
+    {
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/call',
+      params: {
+        name: 'create_lead',
+        arguments: {
+          nome: 'Juliana Ferreira',
+          empresa: 'TechLog Soluções',
+          email: 'juliana.ferreira@techlog.com.br',
+          telefone: '(11) 98888-7777',
+          necessidade_identificada: 'Integração de agente autônomo MCP para suporte comercial',
+          estagio_do_lead: 'qualificado',
+        },
+      },
+    },
+    null,
+    2,
+  )
+
+  const mcpToolsCallResponse = JSON.stringify(
+    {
+      jsonrpc: '2.0',
+      id: 3,
+      result: {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(
+              {
+                ok: true,
+                data: {
+                  lead_id: 'rec_mcp981247a1',
+                  estagio_do_lead: 'qualificado',
+                  created_at: '2026-10-13 01:30:00.000Z',
+                  duplicado: false,
+                },
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+        isError: false,
+        _canonicalEnvelope: {
+          ok: true,
+          data: {
+            lead_id: 'rec_mcp981247a1',
+            estagio_do_lead: 'qualificado',
+            created_at: '2026-10-13 01:30:00.000Z',
+            duplicado: false,
+          },
+        },
+      },
+    },
+    null,
+    2,
+  )
+
+  const mcpClientConfigExample = JSON.stringify(
+    {
+      mcpServers: {
+        consultor_digital: {
+          command: 'npx',
+          args: ['-y', '@modelcontextprotocol/server-fetch', internalMcpUrl],
+          env: {
+            MCP_HTTP_HEADER_X_API_KEY: 'SUA_CHAVE_CONSULTOR_API_KEY',
+          },
+        },
+      },
+    },
+    null,
+    2,
+  )
+
+  const curlMcpInitialize = `curl -X POST "${internalMcpUrl}" \\
+  -H "Content-Type: application/json" \\
+  -H "X-API-Key: SUA_CHAVE_CONSULTOR_API_KEY" \\
+  -d '${mcpInitializePayload}'`
+
+  const curlMcpToolsList = `curl -X POST "${internalMcpUrl}" \\
+  -H "Content-Type: application/json" \\
+  -H "X-API-Key: SUA_CHAVE_CONSULTOR_API_KEY" \\
+  -d '${mcpToolsListPayload}'`
+
+  const curlMcpToolsCall = `curl -X POST "${internalMcpUrl}" \\
+  -H "Content-Type: application/json" \\
+  -H "X-API-Key: SUA_CHAVE_CONSULTOR_API_KEY" \\
+  -d '${mcpToolsCallPayload}'`
 
   const errorUnauthorized = JSON.stringify(
     {
@@ -2603,6 +2894,407 @@ def criar_lead(dados_lead):
                         </Button>
                         <pre className="font-mono text-xs text-slate-200 overflow-x-auto whitespace-pre pt-5 sm:pt-0">
                           {curlGetLeadByEmail}
+                        </pre>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                </CardContent>
+              </Card>
+            </section>
+
+            {/* SEÇÃO 4.5: ADAPTADOR MCP (MODEL CONTEXT PROTOCOL) */}
+            <section id="adaptador-mcp" className="scroll-mt-20">
+              <Card className="border-indigo-200 bg-white shadow-2xs">
+                <CardHeader className="pb-3 border-b border-indigo-50">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Cpu className="h-5 w-5 text-indigo-700" />
+                      <CardTitle className="text-lg font-bold text-slate-900">
+                        10. Adaptador MCP (Model Context Protocol)
+                      </CardTitle>
+                      <Badge className="bg-indigo-600 text-white font-mono text-[10px]">
+                        JSON-RPC 2.0
+                      </Badge>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="text-indigo-800 border-indigo-300 self-start sm:self-auto text-[11px]"
+                    >
+                      ADR-001: Adaptador de Transporte
+                    </Badge>
+                  </div>
+                  <CardDescription className="text-xs text-slate-500">
+                    Expõe o mesmo catálogo canônico das 7 ferramentas para agentes de IA e clientes
+                    MCP (Claude Desktop, Cursor, LangChain)
+                  </CardDescription>
+                </CardHeader>
+
+                <CardContent className="space-y-5 pt-4 text-xs sm:text-sm text-slate-700">
+                  {/* Contexto e Arquitetura ADR-001 */}
+                  <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-4 space-y-2">
+                    <h4 className="font-bold text-indigo-950 text-xs flex items-center gap-1.5">
+                      <Layers className="h-4 w-4 text-indigo-700" />
+                      Como funciona o Adaptador MCP na Camada de Integração
+                    </h4>
+                    <p className="text-xs text-indigo-900 leading-relaxed">
+                      Em conformidade com a <strong>ADR-001</strong>, a API HTTP é o contrato
+                      canônico do sistema. O adaptador MCP atua como uma{' '}
+                      <strong>camada de transporte alternativa</strong> sobre o mesmo registro de
+                      domínio. Ele não duplica nem altera regras de negócio: ao receber requisições
+                      MCP, valida o envelope JSON-RPC 2.0, checa a autenticação{' '}
+                      <code>X-API-Key</code> em tempo constante, consulta o mesmo catálogo de
+                      ferramentas e despacha chamadas diretamente para os serviços de domínio já
+                      testados e validados.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-2 text-[11px]">
+                      <div className="p-2 bg-white rounded border border-indigo-200">
+                        <strong className="block text-indigo-950">Transporte MCP</strong>
+                        <span className="text-slate-600">JSON-RPC 2.0 sobre POST</span>
+                      </div>
+                      <div className="p-2 bg-white rounded border border-indigo-200">
+                        <strong className="block text-indigo-950">Autenticação</strong>
+                        <span className="text-slate-600">Fail-closed X-API-Key</span>
+                      </div>
+                      <div className="p-2 bg-white rounded border border-indigo-200">
+                        <strong className="block text-indigo-950">Catálogo Canônico</strong>
+                        <span className="text-slate-600">Mesmas 7 tools do registro</span>
+                      </div>
+                      <div className="p-2 bg-white rounded border border-indigo-200">
+                        <strong className="block text-indigo-950">Auditoria LGPD</strong>
+                        <span className="text-slate-600">Registro cego em tool_logs</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* URLs do Adaptador */}
+                  <div className="space-y-2">
+                    <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider">
+                      Endpoints do Adaptador MCP
+                    </h4>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-1">
+                        <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                          Rota Pública (Produção - Reverse Proxy)
+                        </span>
+                        <div className="flex items-center justify-between gap-2">
+                          <code className="font-mono text-xs text-slate-800 break-all select-all">
+                            {canonicalMcpUrl}
+                          </code>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => copyToClipboard(canonicalMcpUrl, 'URL Pública MCP')}
+                            className="h-7 px-2 shrink-0 text-slate-600"
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-teal-200 bg-teal-50/40 p-3 space-y-1">
+                        <span className="text-[11px] font-semibold text-teal-700 uppercase tracking-wider">
+                          Rota Interna Direta (Recomendada para Clientes MCP)
+                        </span>
+                        <div className="flex items-center justify-between gap-2">
+                          <code className="font-mono text-xs text-teal-900 font-bold break-all select-all">
+                            {internalMcpUrl}
+                          </code>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => copyToClipboard(internalMcpUrl, 'URL Interna MCP')}
+                            className="h-7 px-2 shrink-0 text-teal-700 hover:text-teal-900 hover:bg-teal-100"
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Métodos Suportados */}
+                  <div className="space-y-2">
+                    <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider">
+                      Métodos JSON-RPC 2.0 Suportados
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="p-3 rounded-lg border border-slate-200 bg-white space-y-1">
+                        <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-indigo-700">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-indigo-600" />
+                          initialize
+                        </div>
+                        <p className="text-xs text-slate-600">
+                          Handshake inicial do protocolo. Retorna capacidades (capabilities.tools),
+                          metadados do servidor e versão do protocolo MCP.
+                        </p>
+                      </div>
+
+                      <div className="p-3 rounded-lg border border-slate-200 bg-white space-y-1">
+                        <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-indigo-700">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-indigo-600" />
+                          tools/list
+                        </div>
+                        <p className="text-xs text-slate-600">
+                          Lista todas as ferramentas disponíveis com seus schemas em JSON Schema
+                          (inputSchema), derivadas da fonte única de verdade do registro.
+                        </p>
+                      </div>
+
+                      <div className="p-3 rounded-lg border border-slate-200 bg-white space-y-1">
+                        <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-indigo-700">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-indigo-600" />
+                          tools/call
+                        </div>
+                        <p className="text-xs text-slate-600">
+                          Despacha e executa uma ferramenta específica (ex: create_lead,
+                          schedule_meeting, send_email, list_leads, get_lead). Retorna conteúdo
+                          estruturado no formato MCP.
+                        </p>
+                      </div>
+
+                      <div className="p-3 rounded-lg border border-slate-200 bg-white space-y-1">
+                        <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-indigo-700">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-indigo-600" />
+                          ping / notifications/initialized
+                        </div>
+                        <p className="text-xs text-slate-600">
+                          Verificação de conectividade leve e confirmação de inicialização do
+                          cliente MCP (suporte a notificações sem ID).
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Tabs com Exemplos Interativos */}
+                  <Tabs defaultValue="list" className="w-full">
+                    <TabsList className="bg-slate-100 border border-slate-200 text-xs flex-wrap h-auto p-1">
+                      <TabsTrigger value="init" className="text-xs">
+                        1. initialize
+                      </TabsTrigger>
+                      <TabsTrigger value="list" className="text-xs">
+                        2. tools/list
+                      </TabsTrigger>
+                      <TabsTrigger value="call" className="text-xs">
+                        3. tools/call
+                      </TabsTrigger>
+                      <TabsTrigger value="config" className="text-xs">
+                        4. Configuração Cliente MCP
+                      </TabsTrigger>
+                    </TabsList>
+
+                    {/* Tab: initialize */}
+                    <TabsContent value="init" className="space-y-3">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 relative">
+                          <span className="text-[10px] font-mono text-slate-400 block mb-2 uppercase">
+                            Payload Request (JSON-RPC 2.0)
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              copyToClipboard(mcpInitializePayload, 'Payload MCP initialize')
+                            }
+                            className="absolute top-2 right-2 h-6 text-xs text-indigo-400 hover:text-indigo-300 hover:bg-slate-800"
+                          >
+                            {copiedSnippet === 'Payload MCP initialize' ? 'Copiado!' : 'Copiar'}
+                          </Button>
+                          <pre className="font-mono text-xs text-slate-200 overflow-x-auto whitespace-pre">
+                            {mcpInitializePayload}
+                          </pre>
+                        </div>
+
+                        <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 relative">
+                          <span className="text-[10px] font-mono text-emerald-400 block mb-2 uppercase">
+                            Resposta do Servidor (HTTP 200 OK)
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              copyToClipboard(mcpInitializeResponse, 'Resposta MCP initialize')
+                            }
+                            className="absolute top-2 right-2 h-6 text-xs text-emerald-400 hover:text-emerald-300 hover:bg-slate-800"
+                          >
+                            {copiedSnippet === 'Resposta MCP initialize' ? 'Copiado!' : 'Copiar'}
+                          </Button>
+                          <pre className="font-mono text-xs text-emerald-300 overflow-x-auto whitespace-pre">
+                            {mcpInitializeResponse}
+                          </pre>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 relative">
+                        <span className="text-[10px] font-mono text-indigo-400 block mb-2 uppercase">
+                          Exemplo de Chamada cURL
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard(curlMcpInitialize, 'cURL MCP initialize')}
+                          className="absolute top-2 right-2 h-6 text-xs text-indigo-400 hover:text-indigo-300 hover:bg-slate-800"
+                        >
+                          {copiedSnippet === 'cURL MCP initialize' ? 'Copiado!' : 'Copiar'}
+                        </Button>
+                        <pre className="font-mono text-xs text-slate-200 overflow-x-auto whitespace-pre pt-4 sm:pt-0">
+                          {curlMcpInitialize}
+                        </pre>
+                      </div>
+                    </TabsContent>
+
+                    {/* Tab: tools/list */}
+                    <TabsContent value="list" className="space-y-3">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 relative">
+                          <span className="text-[10px] font-mono text-slate-400 block mb-2 uppercase">
+                            Payload Request (tools/list)
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              copyToClipboard(mcpToolsListPayload, 'Payload MCP tools/list')
+                            }
+                            className="absolute top-2 right-2 h-6 text-xs text-indigo-400 hover:text-indigo-300 hover:bg-slate-800"
+                          >
+                            {copiedSnippet === 'Payload MCP tools/list' ? 'Copiado!' : 'Copiar'}
+                          </Button>
+                          <pre className="font-mono text-xs text-slate-200 overflow-x-auto whitespace-pre">
+                            {mcpToolsListPayload}
+                          </pre>
+                        </div>
+
+                        <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 relative">
+                          <span className="text-[10px] font-mono text-emerald-400 block mb-2 uppercase">
+                            Resposta com Catálogo Derivado (JSON Schema)
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              copyToClipboard(mcpToolsListResponse, 'Resposta MCP tools/list')
+                            }
+                            className="absolute top-2 right-2 h-6 text-xs text-emerald-400 hover:text-emerald-300 hover:bg-slate-800"
+                          >
+                            {copiedSnippet === 'Resposta MCP tools/list' ? 'Copiado!' : 'Copiar'}
+                          </Button>
+                          <pre className="font-mono text-xs text-emerald-300 overflow-x-auto whitespace-pre max-h-[380px]">
+                            {mcpToolsListResponse}
+                          </pre>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 relative">
+                        <span className="text-[10px] font-mono text-indigo-400 block mb-2 uppercase">
+                          Exemplo de Chamada cURL
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard(curlMcpToolsList, 'cURL MCP tools/list')}
+                          className="absolute top-2 right-2 h-6 text-xs text-indigo-400 hover:text-indigo-300 hover:bg-slate-800"
+                        >
+                          {copiedSnippet === 'cURL MCP tools/list' ? 'Copiado!' : 'Copiar'}
+                        </Button>
+                        <pre className="font-mono text-xs text-slate-200 overflow-x-auto whitespace-pre pt-4 sm:pt-0">
+                          {curlMcpToolsList}
+                        </pre>
+                      </div>
+                    </TabsContent>
+
+                    {/* Tab: tools/call */}
+                    <TabsContent value="call" className="space-y-3">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 relative">
+                          <span className="text-[10px] font-mono text-slate-400 block mb-2 uppercase">
+                            Payload Request (tools/call: create_lead)
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              copyToClipboard(mcpToolsCallPayload, 'Payload MCP tools/call')
+                            }
+                            className="absolute top-2 right-2 h-6 text-xs text-indigo-400 hover:text-indigo-300 hover:bg-slate-800"
+                          >
+                            {copiedSnippet === 'Payload MCP tools/call' ? 'Copiado!' : 'Copiar'}
+                          </Button>
+                          <pre className="font-mono text-xs text-slate-200 overflow-x-auto whitespace-pre">
+                            {mcpToolsCallPayload}
+                          </pre>
+                        </div>
+
+                        <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 relative">
+                          <span className="text-[10px] font-mono text-emerald-400 block mb-2 uppercase">
+                            Resposta MCP Result (content: text)
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              copyToClipboard(mcpToolsCallResponse, 'Resposta MCP tools/call')
+                            }
+                            className="absolute top-2 right-2 h-6 text-xs text-emerald-400 hover:text-emerald-300 hover:bg-slate-800"
+                          >
+                            {copiedSnippet === 'Resposta MCP tools/call' ? 'Copiado!' : 'Copiar'}
+                          </Button>
+                          <pre className="font-mono text-xs text-emerald-300 overflow-x-auto whitespace-pre max-h-[380px]">
+                            {mcpToolsCallResponse}
+                          </pre>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 relative">
+                        <span className="text-[10px] font-mono text-indigo-400 block mb-2 uppercase">
+                          Exemplo de Chamada cURL
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard(curlMcpToolsCall, 'cURL MCP tools/call')}
+                          className="absolute top-2 right-2 h-6 text-xs text-indigo-400 hover:text-indigo-300 hover:bg-slate-800"
+                        >
+                          {copiedSnippet === 'cURL MCP tools/call' ? 'Copiado!' : 'Copiar'}
+                        </Button>
+                        <pre className="font-mono text-xs text-slate-200 overflow-x-auto whitespace-pre pt-4 sm:pt-0">
+                          {curlMcpToolsCall}
+                        </pre>
+                      </div>
+                    </TabsContent>
+
+                    {/* Tab: Configuração de Cliente MCP */}
+                    <TabsContent value="config" className="space-y-3">
+                      <div className="rounded-lg border border-indigo-200 bg-indigo-50/40 p-4 space-y-2">
+                        <h4 className="font-bold text-indigo-950 text-xs">
+                          Como conectar seu cliente MCP (Claude Desktop / Cursor / LangChain)
+                        </h4>
+                        <p className="text-xs text-indigo-900 leading-relaxed">
+                          Para configurar o servidor MCP no seu cliente local (por exemplo, no
+                          arquivo <code>claude_desktop_config.json</code>), configure a chamada HTTP
+                          informando o endpoint do servidor e o header <code>X-API-Key</code>:
+                        </p>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 relative">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            copyToClipboard(mcpClientConfigExample, 'Configuração Claude Desktop')
+                          }
+                          className="absolute top-2 right-2 h-7 text-xs text-indigo-400 hover:text-indigo-300 hover:bg-slate-800"
+                        >
+                          {copiedSnippet === 'Configuração Claude Desktop' ? (
+                            <Check className="h-3.5 w-3.5 mr-1" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5 mr-1" />
+                          )}
+                          {copiedSnippet === 'Configuração Claude Desktop'
+                            ? 'Copiado!'
+                            : 'Copiar Configuração'}
+                        </Button>
+                        <pre className="font-mono text-xs text-slate-200 overflow-x-auto whitespace-pre pt-5 sm:pt-0">
+                          {mcpClientConfigExample}
                         </pre>
                       </div>
                     </TabsContent>

@@ -9,6 +9,7 @@ const ROUTE_LIST_MEETINGS = '/backend/v1/tools/list_meetings'
 const ROUTE_LIST_LEADS = '/backend/v1/tools/list_leads'
 const ROUTE_GET_LEAD = '/backend/v1/tools/get_lead'
 const ROUTE_TOOLS_REGISTRY = '/backend/v1/tools'
+const ROUTE_MCP_ADAPTER = '/backend/v1/mcp'
 
 const PUBLIC_CREATE_LEAD_PATH = `${ROUTE_API_PREFIX}${ROUTE_CREATE_LEAD}`
 const PUBLIC_SCHEDULE_MEETING_PATH = `${ROUTE_API_PREFIX}${ROUTE_SCHEDULE_MEETING}`
@@ -17,6 +18,7 @@ const PUBLIC_LIST_MEETINGS_PATH = `${ROUTE_API_PREFIX}${ROUTE_LIST_MEETINGS}`
 const PUBLIC_LIST_LEADS_PATH = `${ROUTE_API_PREFIX}${ROUTE_LIST_LEADS}`
 const PUBLIC_GET_LEAD_PATH = `${ROUTE_API_PREFIX}${ROUTE_GET_LEAD}`
 const PUBLIC_TOOLS_REGISTRY_PATH = `${ROUTE_API_PREFIX}${ROUTE_TOOLS_REGISTRY}`
+const PUBLIC_MCP_ADAPTER_PATH = `${ROUTE_API_PREFIX}${ROUTE_MCP_ADAPTER}`
 
 export const toolRegistryList: ToolDefinition[] = [
   {
@@ -82,10 +84,19 @@ export const toolRegistryList: ToolDefinition[] = [
     metodo: 'GET',
     status: 'ativa',
   },
+  {
+    nome: 'mcp_adapter',
+    descricao:
+      'Adaptador MCP (Model Context Protocol via JSON-RPC 2.0) sobre o catálogo canônico de ferramentas.',
+    escopo: 'tools:mcp',
+    endpoint: PUBLIC_MCP_ADAPTER_PATH,
+    metodo: 'POST',
+    status: 'ativa',
+  },
 ]
 
 export const INTEGRATION_CONFIG = {
-  version: 'v2.4.0',
+  version: 'v2.5.0',
   // Domínio público do Skip Cloud e caminhos públicos roteados via /api/*
   publicDomain: 'https://integracao-de-ferramentas-do-consultor-e38b8' + '.goskip.app',
   publicEndpointPath: PUBLIC_CREATE_LEAD_PATH,
@@ -95,6 +106,7 @@ export const INTEGRATION_CONFIG = {
   publicListLeadsPath: PUBLIC_LIST_LEADS_PATH,
   publicGetLeadPath: PUBLIC_GET_LEAD_PATH,
   publicToolsRegistryPath: PUBLIC_TOOLS_REGISTRY_PATH,
+  publicMcpAdapterPath: PUBLIC_MCP_ADAPTER_PATH,
   // URL interna/direta ao PocketBase
   backendUrl:
     import.meta.env.VITE_POCKETBASE_URL ||
@@ -106,5 +118,6 @@ export const INTEGRATION_CONFIG = {
   internalListLeadsPath: ROUTE_LIST_LEADS,
   internalGetLeadPath: ROUTE_GET_LEAD,
   internalToolsRegistryPath: ROUTE_TOOLS_REGISTRY,
+  internalMcpAdapterPath: ROUTE_MCP_ADAPTER,
   endpointPath: PUBLIC_CREATE_LEAD_PATH,
 }

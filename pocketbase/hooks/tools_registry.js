@@ -110,6 +110,18 @@
         idempotencia: 'não aplicável (leitura)',
         rate_limit: '120 req/min',
       },
+      {
+        nome: 'mcp_adapter',
+        metodo: 'POST',
+        caminho: '/v1/mcp',
+        versao: 'v1',
+        descricao:
+          'Adaptador MCP (Model Context Protocol via JSON-RPC 2.0) sobre o catálogo canônico de ferramentas',
+        campos_obrigatorios: ['jsonrpc', 'method'],
+        campos_opcionais: ['id', 'params'],
+        idempotencia: 'definida por método/tool chamada',
+        rate_limit: '120 req/min',
+      },
     ]
 
     // =========================================================================
