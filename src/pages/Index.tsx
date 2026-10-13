@@ -12,15 +12,18 @@ import {
   RefreshCw,
   Wrench,
   KeyRound,
+  CalendarClock,
+  Sparkles,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { leadService } from '@/services/leadService'
 import { toolLogService } from '@/services/toolLogService'
+import { meetingService } from '@/services/meetingService'
 import { toolRegistryList, INTEGRATION_CONFIG } from '@/services/toolRegistry'
 import { useRealtime } from '@/hooks/use-realtime'
-import type { LeadRecord, ToolLogRecord, EstagioLead } from '@/types/integration'
+import type { LeadRecord, ToolLogRecord, EstagioLead, MeetingRecord } from '@/types/integration'
 import {
   ResponsiveContainer,
   BarChart,
@@ -42,19 +45,36 @@ export default function Index() {
   const [metrics, setMetrics] = useState({ total: 0, success: 0, rateLimited: 0, successRate: 100 })
   const [recentLogs, setRecentLogs] = useState<ToolLogRecord[]>([])
   const [allLeads, setAllLeads] = useState<LeadRecord[]>([])
+  const [todayPendingMeetings, setTodayPendingMeetings] = useState<MeetingRecord[]>([])
+  const [isLoadingMeetings, setIsLoadingMeetings] = useState(false)
+
+  const loadTodayMeetings = useCallback(async () => {
+    try {
+      setIsLoadingMeetings(true)
+      const meetings = await meetingService.getTodayPendingMeetings()
+      setTodayPendingMeetings(meetings)
+    } catch (err) {
+      console.error('Erro ao carregar reuniões de hoje:', err)
+    } finally {
+      setIsLoadingMeetings(false)
+    }
+  }, [])
+
   const loadData = useCallback(async () => {
     try {
       setIsLoading(true)
-      const [stats, met, logsRes, leadsRes] = await Promise.all([
+      const [stats, met, logsRes, leadsRes, todayMeetings] = await Promise.all([
         leadService.getStats(),
         toolLogService.getMetrics(),
         toolLogService.getRecentLogs(5),
         leadService.getLeads({ perPage: 100 }),
+        meetingService.getTodayPendingMeetings().catch(() => [] as MeetingRecord[]),
       ])
       setLeadStats(stats)
       setMetrics(met)
       setRecentLogs(logsRes.items)
       setAllLeads(leadsRes.items)
+      setTodayPendingMeetings(todayMeetings)
     } catch (err) {
       console.error('Erro ao carregar dados do dashboard:', err)
     } finally {
@@ -73,6 +93,11 @@ export default function Index() {
 
   useRealtime<ToolLogRecord>('tool_logs', () => {
     loadData()
+  })
+
+  // Inscrição Realtime em meetings para atualizar o widget ao vivo quando nova reunião entrar ou mudar
+  useRealtime<MeetingRecord>('meetings', () => {
+    loadTodayMeetings()
   })
 
   // Agrupamento para o gráfico dos últimos 7 dias por estágio
@@ -161,6 +186,149 @@ export default function Index() {
           </Button>
         </div>
       </div>
+
+      {/* Widget: Reuniões de Hoje (Alerta / Resumo de Pendentes) */}
+      <Card className="border-teal-200/80 bg-gradient-to-br from-teal-50/50 via-white to-slate-50/40 shadow-xs overflow-hidden">
+        <CardHeader className="pb-3 border-b border-slate-100/80 bg-white/70">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-600 text-white shadow-xs">
+                <CalendarClock className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-base font-bold text-slate-900">
+                    Reuniões de Hoje
+                  </CardTitle>
+                  <Badge
+                    variant="outline"
+                    className="border-teal-300 bg-teal-50 text-teal-800 text-[11px] font-medium"
+                  >
+                    {todayPendingMeetings.length}{' '}
+                    {todayPendingMeetings.length === 1 ? 'pendente' : 'pendentes'}
+                  </Badge>
+                </div>
+                <CardDescription className="text-xs text-slate-500">
+                  Agendamentos pendentes confirmados no fuso de Brasília (America/Sao_Paulo) com
+                  sincronização em tempo real
+                </CardDescription>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={loadTodayMeetings}
+                title="Atualizar reuniões de hoje"
+                className="h-8 w-8 p-0 text-slate-500 hover:text-slate-800"
+              >
+                <RefreshCw className={`h-4 w-4 ${isLoadingMeetings ? 'animate-spin' : ''}`} />
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => navigate('/reunioes')}
+                className="text-xs border-teal-200 text-teal-800 hover:bg-teal-50 hover:text-teal-900 flex items-center gap-1.5"
+              >
+                <span>Ver todas em Reuniões</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="pt-4">
+          {todayPendingMeetings.length === 0 ? (
+            <div className="py-8 px-4 text-center rounded-lg border border-dashed border-slate-200 bg-white flex flex-col items-center justify-center">
+              <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-2">
+                <Calendar className="h-5 w-5" />
+              </div>
+              <p className="text-sm font-semibold text-slate-700">
+                Nenhuma reunião pendente para hoje
+              </p>
+              <p className="text-xs text-slate-500 mt-1 max-w-md">
+                Todas as solicitações de reunião do dia foram atendidas ou não há agendamentos
+                pendentes para hoje.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate('/reunioes')}
+                className="mt-3 text-xs border-slate-200 text-slate-700"
+              >
+                Consultar histórico completo de reuniões
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {todayPendingMeetings.map((meeting) => {
+                const meetingDate = new Date(meeting.data_hora)
+                const horaFormatada = !isNaN(meetingDate.getTime())
+                  ? meetingDate.toLocaleTimeString('pt-BR', {
+                      timeZone: 'America/Sao_Paulo',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
+                  : '--:--'
+
+                return (
+                  <div
+                    key={meeting.id}
+                    className="p-3.5 rounded-lg border border-teal-100 bg-white hover:border-teal-300 hover:shadow-xs transition-all flex flex-col justify-between gap-3 group"
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-teal-800 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
+                          <Clock className="h-3.5 w-3.5 text-teal-600" />
+                          <span>{horaFormatada}</span>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] bg-amber-50 text-amber-800 border-amber-200 font-medium"
+                        >
+                          Pendente
+                        </Badge>
+                      </div>
+
+                      <div className="pt-1">
+                        <p className="text-sm font-bold text-slate-900 group-hover:text-teal-700 transition-colors line-clamp-1">
+                          {meeting.nome}
+                        </p>
+                        <p className="text-xs font-medium text-slate-600 line-clamp-1">
+                          {meeting.empresa || 'Pessoa física'}
+                        </p>
+                      </div>
+
+                      <div className="pt-1">
+                        <p className="text-xs text-slate-700 line-clamp-2 leading-relaxed bg-slate-50/70 p-2 rounded border border-slate-100">
+                          <span className="font-semibold text-slate-800">Assunto: </span>
+                          {meeting.assunto}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        {meeting.telefone || meeting.email}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => navigate('/reunioes')}
+                        className="h-7 px-2 text-xs text-teal-700 hover:text-teal-900 hover:bg-teal-50 font-medium flex items-center gap-1"
+                      >
+                        <span>Gerenciar</span>
+                        <ArrowRight className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* 4 Stats Cards Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

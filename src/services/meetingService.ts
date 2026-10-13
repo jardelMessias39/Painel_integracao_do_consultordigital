@@ -46,6 +46,40 @@ export const meetingService = {
   },
 
   /**
+   * Busca as reuniões de hoje com status 'pendente' ordenadas por hora (fuso America/Sao_Paulo)
+   */
+  async getTodayPendingMeetings(): Promise<MeetingRecord[]> {
+    // Calcula o intervalo do dia atual no fuso America/Sao_Paulo (UTC-3)
+    // Para cobrir 00:00:00 a 23:59:59 em UTC-3, precisamos de:
+    // 03:00:00 UTC do dia até 02:59:59.999 UTC do dia seguinte
+    const now = new Date()
+    // Obtém ano, mês e dia no fuso America/Sao_Paulo
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+    const dateStr = formatter.format(now) // "YYYY-MM-DD"
+    const [year, month, day] = dateStr.split('-').map(Number)
+
+    // Início do dia em SP: YYYY-MM-DD 00:00:00 BRT -> YYYY-MM-DD 03:00:00 UTC
+    const startUtc = new Date(Date.UTC(year, month - 1, day, 3, 0, 0, 0))
+    // Fim do dia em SP: YYYY-MM-DD 23:59:59.999 BRT -> (dia+1) 02:59:59.999 UTC
+    const endUtc = new Date(Date.UTC(year, month - 1, day + 1, 2, 59, 59, 999))
+
+    const startFilterStr = startUtc.toISOString().replace('T', ' ')
+    const endFilterStr = endUtc.toISOString().replace('T', ' ')
+
+    const filter = `status = 'pendente' && data_hora >= '${startFilterStr}' && data_hora <= '${endFilterStr}'`
+
+    return await pb.collection<MeetingRecord>('meetings').getFullList({
+      filter,
+      sort: '+data_hora',
+    })
+  },
+
+  /**
    * Atualiza exclusivamente o status de uma reunião
    */
   async updateStatus(id: string, status: StatusMeeting) {
