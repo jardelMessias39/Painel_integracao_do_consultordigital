@@ -588,6 +588,55 @@
         } catch (_) {}
         return null
       },
+      findConflictingMeetings: (email, isoDateString) => {
+        const pbDateString = meetingRepo.formatForPocketBaseDate(isoDateString)
+        const conflicts = []
+        try {
+          const filterParts = [
+            'email != {:email}',
+            "(status = 'pendente' || status = 'confirmada')",
+            'data_hora = {:data_hora}',
+          ]
+          const pbFilter = filterParts.join(' && ')
+          const filterParams = { email: email, data_hora: pbDateString }
+
+          let records = $app.findRecordsByFilter(
+            'meetings',
+            pbFilter,
+            '+created',
+            50,
+            0,
+            filterParams,
+          )
+
+          if ((!records || records.length === 0) && pbDateString !== isoDateString) {
+            filterParams.data_hora = isoDateString
+            records = $app.findRecordsByFilter(
+              'meetings',
+              pbFilter,
+              '+created',
+              50,
+              0,
+              filterParams,
+            )
+          }
+
+          if (records && records.length > 0) {
+            for (let i = 0; i < records.length; i++) {
+              const r = records[i]
+              conflicts.push({
+                id: r.id,
+                nome: r.getString('nome') || 'Não informado',
+                empresa: r.getString('empresa') || 'Pessoa física',
+                email: r.getString('email') || '',
+                status: r.getString('status'),
+                assunto: r.getString('assunto') || '',
+              })
+            }
+          }
+        } catch (_) {}
+        return conflicts
+      },
       insertMeeting: (meetingData, reqId) => {
         const meetingsCol = $app.findCollectionByNameOrId('meetings')
         const newRecord = new Record(meetingsCol)
@@ -606,6 +655,231 @@
           status: newRecord.getString('status'),
           data_hora: newRecord.getString('data_hora'),
           created: newRecord.getString('created'),
+        }
+      },
+    }
+
+    const meetingNotifier = {
+      formatDateTimeSP: (isoDateString) => {
+        try {
+          const rawDateStr = String(isoDateString || '').replace(' ', 'T')
+          const utcDate = new Date(rawDateStr)
+          if (isNaN(utcDate.getTime())) return isoDateString
+
+          const SP_OFFSET_MS = -3 * 60 * 60 * 1000
+          const spDate = new Date(utcDate.getTime() + SP_OFFSET_MS)
+
+          const pad = (n) => (n < 10 ? '0' + n : '' + n)
+          const dia = pad(spDate.getUTCDate())
+          const mes = pad(spDate.getUTCMonth() + 1)
+          const ano = spDate.getUTCFullYear()
+          const hora = pad(spDate.getUTCHours())
+          const minuto = pad(spDate.getUTCMinutes())
+
+          return (
+            dia + '/' + mes + '/' + ano + ' às ' + hora + ':' + minuto + ' (horário de Brasília)'
+          )
+        } catch (_) {
+          return isoDateString
+        }
+      },
+
+      sendInstantMeetingEmail: (meetingData, conflictCount, conflictingList) => {
+        try {
+          const users = $app.findRecordsByFilter('users', "email != ''", 'created', 10, 0)
+          const recipientEmails = []
+
+          if (users && users.length > 0) {
+            for (let i = 0; i < users.length; i++) {
+              const uEmail = users[i].getString('email').trim().toLowerCase()
+              if (uEmail && recipientEmails.indexOf(uEmail) === -1) {
+                recipientEmails.push(uEmail)
+              }
+            }
+          }
+
+          if (recipientEmails.length === 0) {
+            return
+          }
+
+          const dataHoraFormatada = meetingNotifier.formatDateTimeSP(meetingData.data_hora)
+          const nomeLead = meetingData.nome || 'Não informado'
+          const empresaLead = meetingData.empresa || 'Pessoa física'
+          const emailLead = meetingData.email || 'Não informado'
+          const telefoneLead = meetingData.telefone || 'Não informado'
+          const assuntoLead = meetingData.assunto || 'Sem assunto'
+          const obsLead = meetingData.observacoes || ''
+
+          const hasConflict = conflictCount > 0
+          const subject = hasConflict
+            ? '⚠ [CONFLITO] Nova reunião agendada — ' + nomeLead + ' (' + empresaLead + ')'
+            : 'Nova reunião agendada — ' + nomeLead + ' (' + empresaLead + ')'
+
+          let conflictTextSection = ''
+          let conflictHtmlSection = ''
+          if (hasConflict) {
+            conflictTextSection =
+              '\n==================================================\n' +
+              '⚠ ATENÇÃO: CONFLITO DE HORÁRIO IDENTIFICADO!\n' +
+              'Já existe(m) ' +
+              conflictCount +
+              ' outra(s) reunião(ões) neste mesmo horário:\n'
+
+            for (let c = 0; c < conflictingList.length; c++) {
+              const confItem = conflictingList[c]
+              conflictTextSection +=
+                ' - ' +
+                confItem.nome +
+                ' (' +
+                confItem.empresa +
+                ') — Status: ' +
+                confItem.status +
+                '\n'
+            }
+            conflictTextSection += '==================================================\n\n'
+
+            let conflictHtmlItems = ''
+            for (let c = 0; c < conflictingList.length; c++) {
+              const confItem = conflictingList[c]
+              conflictHtmlItems +=
+                '<li style="margin-bottom: 4px;"><strong>' +
+                confItem.nome +
+                '</strong> (' +
+                confItem.empresa +
+                ') — <span style="font-family: monospace;">' +
+                confItem.status +
+                '</span></li>'
+            }
+
+            conflictHtmlSection =
+              '<div style="background: #fef2f2; border: 1px solid #f87171; border-left: 5px solid #dc2626; padding: 14px 16px; border-radius: 6px; margin-bottom: 20px;">' +
+              '<strong style="color: #991b1b; font-size: 14px; display: block; margin-bottom: 6px;">' +
+              '⚠ Atenção: já existe(m) ' +
+              conflictCount +
+              ' outra(s) reunião(ões) neste mesmo horário' +
+              '</strong>' +
+              '<ul style="margin: 6px 0 0 18px; padding: 0; color: #7f1d1d; font-size: 13px;">' +
+              conflictHtmlItems +
+              '</ul>' +
+              '<p style="margin: 8px 0 0 0; font-size: 12px; color: #991b1b;">Recomenda-se verificar a disponibilidade no painel para evitar sobreposição de agendas.</p>' +
+              '</div>'
+          }
+
+          let textBody =
+            'Olá!\n\n' +
+            'Uma nova solicitação de reunião foi registrada pelo Consultor Digital.\n\n'
+
+          if (conflictTextSection) {
+            textBody += conflictTextSection
+          }
+
+          textBody +=
+            'DETALHES DO AGENDAMENTO:\n' +
+            '• Nome: ' +
+            nomeLead +
+            '\n' +
+            '• Empresa: ' +
+            empresaLead +
+            '\n' +
+            '• E-mail: ' +
+            emailLead +
+            '\n' +
+            '• Telefone: ' +
+            telefoneLead +
+            '\n' +
+            '• Data e Hora: ' +
+            dataHoraFormatada +
+            '\n' +
+            '• Assunto: ' +
+            assuntoLead +
+            '\n' +
+            '• Status: pendente\n'
+
+          if (obsLead) {
+            textBody += '• Observações: ' + obsLead + '\n'
+          }
+
+          textBody +=
+            '\nPor favor, acesse o painel em /reunioes para confirmar ou gerenciar este compromisso.\n\n' +
+            '---\n' +
+            'Consultor Digital — Camada de Integração'
+
+          const htmlObsRow = obsLead
+            ? '<tr><td style="padding: 8px 12px; color: #64748b; font-size: 13px; vertical-align: top;">Observações:</td><td style="padding: 8px 12px; color: #0f172a; font-size: 13px;">' +
+              obsLead.replace(/\n/g, '<br/>') +
+              '</td></tr>'
+            : ''
+
+          const htmlBody =
+            '<div style="font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b; line-height: 1.5;">' +
+            '<div style="background: ' +
+            (hasConflict ? '#b91c1c' : '#0f766e') +
+            '; padding: 20px; border-radius: 8px 8px 0 0; color: #ffffff;">' +
+            '<h2 style="margin: 0; font-size: 20px;">Nova Reunião Agendada</h2>' +
+            '<p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.95;">' +
+            (hasConflict
+              ? '⚠ Alerta de conflito de horário'
+              : 'Consultor Digital — Notificação Instantânea') +
+            '</p>' +
+            '</div>' +
+            '<div style="background: #ffffff; padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">' +
+            conflictHtmlSection +
+            '<table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">' +
+            '<tr><td style="padding: 8px 12px; color: #64748b; font-size: 13px; width: 110px;">Nome:</td><td style="padding: 8px 12px; color: #0f172a; font-size: 13px; font-weight: bold;">' +
+            nomeLead +
+            '</td></tr>' +
+            '<tr><td style="padding: 8px 12px; color: #64748b; font-size: 13px;">Empresa:</td><td style="padding: 8px 12px; color: #0f172a; font-size: 13px;">' +
+            empresaLead +
+            '</td></tr>' +
+            '<tr><td style="padding: 8px 12px; color: #64748b; font-size: 13px;">Data e Hora:</td><td style="padding: 8px 12px; color: #0f766e; font-size: 13px; font-weight: bold;">' +
+            dataHoraFormatada +
+            '</td></tr>' +
+            '<tr><td style="padding: 8px 12px; color: #64748b; font-size: 13px;">E-mail:</td><td style="padding: 8px 12px; color: #0f172a; font-size: 13px; font-family: monospace;">' +
+            emailLead +
+            '</td></tr>' +
+            '<tr><td style="padding: 8px 12px; color: #64748b; font-size: 13px;">Telefone:</td><td style="padding: 8px 12px; color: #0f172a; font-size: 13px; font-family: monospace;">' +
+            telefoneLead +
+            '</td></tr>' +
+            '<tr><td style="padding: 8px 12px; color: #64748b; font-size: 13px;">Assunto:</td><td style="padding: 8px 12px; color: #0f172a; font-size: 13px;">' +
+            assuntoLead +
+            '</td></tr>' +
+            '<tr><td style="padding: 8px 12px; color: #64748b; font-size: 13px;">Status:</td><td style="padding: 8px 12px;"><span style="background: #fef3c7; color: #92400e; font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: bold;">pendente</span></td></tr>' +
+            htmlObsRow +
+            '</table>' +
+            '<div style="text-align: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0;">' +
+            '<p style="margin: 0; font-size: 13px; color: #475569;">Por favor, acesse o painel para confirmar ou gerenciar este agendamento.</p>' +
+            '</div>' +
+            '</div>' +
+            '</div>'
+
+          const settings = $app.settings()
+          const senderAddress =
+            (settings && settings.meta && settings.meta.senderAddress) ||
+            (settings && settings.smtp && settings.smtp.username) ||
+            'noreply@mail.goskip.dev'
+          const senderName =
+            (settings && settings.meta && settings.meta.senderName) || 'Consultor Digital'
+
+          for (let i = 0; i < recipientEmails.length; i++) {
+            const toEmail = recipientEmails[i]
+            const msg = new MailerMessage({
+              from: {
+                address: senderAddress,
+                name: senderName,
+              },
+              to: [{ address: toEmail }],
+              subject: subject,
+              text: textBody,
+              html: htmlBody,
+            })
+
+            $app.newMailClient().send(msg)
+          }
+        } catch (mailErr) {
+          console.error(
+            '[MCP_INSTANT_EMAIL_ERROR] Falha ao enviar notificação de reunião:',
+            mailErr,
+          )
         }
       },
     }
@@ -754,9 +1028,17 @@
             data_hora: existing.data_hora,
             created_at: existing.created,
             duplicado: true,
+            conflito: false,
+            conflito_com: 0,
           },
         }
       }
+
+      const conflictingMeetings = meetingRepo.findConflictingMeetings
+        ? meetingRepo.findConflictingMeetings(sanitized.email, sanitized.data_hora)
+        : []
+      const conflictCount = conflictingMeetings.length
+      const hasConflict = conflictCount > 0
 
       let created = null
       try {
@@ -783,12 +1065,19 @@
                 data_hora: concurrentWinner.data_hora,
                 created_at: concurrentWinner.created,
                 duplicado: true,
+                conflito: false,
+                conflito_com: 0,
               },
             }
           }
         }
         throw insertErr
       }
+
+      // Envia notificação aos admins via e-mail (tolerante a falha)
+      try {
+        meetingNotifier.sendInstantMeetingEmail(sanitized, conflictCount, conflictingMeetings)
+      } catch (_) {}
 
       return {
         ok: true,
@@ -798,6 +1087,8 @@
           data_hora: created.data_hora,
           created_at: created.created,
           duplicado: false,
+          conflito: hasConflict,
+          conflito_com: conflictCount,
         },
       }
     }

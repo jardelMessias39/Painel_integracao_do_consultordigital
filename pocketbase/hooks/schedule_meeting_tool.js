@@ -262,6 +262,63 @@
           return null
         },
 
+        // Busca reuniões conflitantes no mesmo horário com status pendente ou confirmada
+        // pertencentes a OUTRO e-mail (ou seja, outro lead/visitante disputando o mesmo slot)
+        findConflictingMeetings: (email, isoDateString) => {
+          const pbDateString = meetingRepository.formatForPocketBaseDate(isoDateString)
+          const conflicts = []
+          try {
+            const filterParts = [
+              'email != {:email}',
+              "(status = 'pendente' || status = 'confirmada')",
+              'data_hora = {:data_hora}',
+            ]
+            const pbFilter = filterParts.join(' && ')
+            const filterParams = { email: email, data_hora: pbDateString }
+
+            let records = $app.findRecordsByFilter(
+              'meetings',
+              pbFilter,
+              '+created',
+              50,
+              0,
+              filterParams,
+            )
+
+            if ((!records || records.length === 0) && pbDateString !== isoDateString) {
+              filterParams.data_hora = isoDateString
+              records = $app.findRecordsByFilter(
+                'meetings',
+                pbFilter,
+                '+created',
+                50,
+                0,
+                filterParams,
+              )
+            }
+
+            if (records && records.length > 0) {
+              for (let i = 0; i < records.length; i++) {
+                const r = records[i]
+                conflicts.push({
+                  id: r.id,
+                  nome: r.getString('nome') || 'Não informado',
+                  empresa: r.getString('empresa') || 'Pessoa física',
+                  email: r.getString('email') || '',
+                  status: r.getString('status'),
+                  assunto: r.getString('assunto') || '',
+                })
+              }
+            }
+          } catch (confErr) {
+            console.error(
+              '[FIND_CONFLICTING_MEETINGS_ERROR]',
+              confErr && confErr.message ? confErr.message : confErr,
+            )
+          }
+          return conflicts
+        },
+
         insertMeeting: (meetingData, reqId) => {
           const meetingsCol = $app.findCollectionByNameOrId('meetings')
           const newRecord = new Record(meetingsCol)
@@ -281,6 +338,254 @@
             status: newRecord.getString('status'),
             data_hora: newRecord.getString('data_hora'),
             created: newRecord.getString('created'),
+          }
+        },
+      }
+
+      // =========================================================================
+      // CAMADA 3.5: NOTIFICAÇÃO POR E-MAIL INSTANTÂNEA AOS ADMINISTRADORES
+      // Reutiliza o mesmo padrão do daily_meetings_summary_cron ($app.newMailClient)
+      // Execução estritamente tolerante a falhas (try/catch fail-safe)
+      // Auditoria LGPD: registra evento técnico SEM corpo nem PII
+      // =========================================================================
+      const notificationService = {
+        formatDateTimeSP: (isoDateString) => {
+          try {
+            const rawDateStr = String(isoDateString || '').replace(' ', 'T')
+            const utcDate = new Date(rawDateStr)
+            if (isNaN(utcDate.getTime())) return isoDateString
+
+            const SP_OFFSET_MS = -3 * 60 * 60 * 1000
+            const spDate = new Date(utcDate.getTime() + SP_OFFSET_MS)
+
+            const pad = (n) => (n < 10 ? '0' + n : '' + n)
+            const dia = pad(spDate.getUTCDate())
+            const mes = pad(spDate.getUTCMonth() + 1)
+            const ano = spDate.getUTCFullYear()
+            const hora = pad(spDate.getUTCHours())
+            const minuto = pad(spDate.getUTCMinutes())
+
+            return (
+              dia + '/' + mes + '/' + ano + ' às ' + hora + ':' + minuto + ' (horário de Brasília)'
+            )
+          } catch (_) {
+            return isoDateString
+          }
+        },
+
+        sendInstantMeetingEmail: (meetingData, conflictCount, conflictingList) => {
+          try {
+            // 1. Obter e-mails dos administradores cadastrados na coleção users
+            const users = $app.findRecordsByFilter('users', "email != ''", 'created', 10, 0)
+            const recipientEmails = []
+
+            if (users && users.length > 0) {
+              for (let i = 0; i < users.length; i++) {
+                const uEmail = users[i].getString('email').trim().toLowerCase()
+                if (uEmail && recipientEmails.indexOf(uEmail) === -1) {
+                  recipientEmails.push(uEmail)
+                }
+              }
+            }
+
+            if (recipientEmails.length === 0) {
+              console.warn(
+                '[INSTANT_EMAIL] Nenhum usuário administrador com e-mail encontrado na coleção users.',
+              )
+              return
+            }
+
+            // 2. Formatação dos dados da reunião
+            const dataHoraFormatada = notificationService.formatDateTimeSP(meetingData.data_hora)
+            const nomeLead = meetingData.nome || 'Não informado'
+            const empresaLead = meetingData.empresa || 'Pessoa física'
+            const emailLead = meetingData.email || 'Não informado'
+            const telefoneLead = meetingData.telefone || 'Não informado'
+            const assuntoLead = meetingData.assunto || 'Sem assunto'
+            const obsLead = meetingData.observacoes || ''
+
+            const hasConflict = conflictCount > 0
+            const subject = hasConflict
+              ? '⚠ [CONFLITO] Nova reunião agendada — ' + nomeLead + ' (' + empresaLead + ')'
+              : 'Nova reunião agendada — ' + nomeLead + ' (' + empresaLead + ')'
+
+            // 3. Montar seção de conflito (se houver)
+            let conflictTextSection = ''
+            let conflictHtmlSection = ''
+            if (hasConflict) {
+              conflictTextSection =
+                '\n==================================================\n' +
+                '⚠ ATENÇÃO: CONFLITO DE HORÁRIO IDENTIFICADO!\n' +
+                'Já existe(m) ' +
+                conflictCount +
+                ' outra(s) reunião(ões) neste mesmo horário:\n'
+
+              for (let c = 0; c < conflictingList.length; c++) {
+                const confItem = conflictingList[c]
+                conflictTextSection +=
+                  ' - ' +
+                  confItem.nome +
+                  ' (' +
+                  confItem.empresa +
+                  ') — Status: ' +
+                  confItem.status +
+                  '\n'
+              }
+              conflictTextSection += '==================================================\n\n'
+
+              let conflictHtmlItems = ''
+              for (let c = 0; c < conflictingList.length; c++) {
+                const confItem = conflictingList[c]
+                conflictHtmlItems +=
+                  '<li style="margin-bottom: 4px;"><strong>' +
+                  confItem.nome +
+                  '</strong> (' +
+                  confItem.empresa +
+                  ') — <span style="font-family: monospace;">' +
+                  confItem.status +
+                  '</span></li>'
+              }
+
+              conflictHtmlSection =
+                '<div style="background: #fef2f2; border: 1px solid #f87171; border-left: 5px solid #dc2626; padding: 14px 16px; border-radius: 6px; margin-bottom: 20px;">' +
+                '<strong style="color: #991b1b; font-size: 14px; display: block; margin-bottom: 6px;">' +
+                '⚠ Atenção: já existe(m) ' +
+                conflictCount +
+                ' outra(s) reunião(ões) neste mesmo horário' +
+                '</strong>' +
+                '<ul style="margin: 6px 0 0 18px; padding: 0; color: #7f1d1d; font-size: 13px;">' +
+                conflictHtmlItems +
+                '</ul>' +
+                '<p style="margin: 8px 0 0 0; font-size: 12px; color: #991b1b;">Recomenda-se verificar a disponibilidade no painel para evitar sobreposição de agendas.</p>' +
+                '</div>'
+            }
+
+            // 4. Montar Corpo em Texto Simples
+            let textBody =
+              'Olá!\n\n' +
+              'Uma nova solicitação de reunião foi registrada pelo Consultor Digital.\n\n'
+
+            if (conflictTextSection) {
+              textBody += conflictTextSection
+            }
+
+            textBody +=
+              'DETALHES DO AGENDAMENTO:\n' +
+              '• Nome: ' +
+              nomeLead +
+              '\n' +
+              '• Empresa: ' +
+              empresaLead +
+              '\n' +
+              '• E-mail: ' +
+              emailLead +
+              '\n' +
+              '• Telefone: ' +
+              telefoneLead +
+              '\n' +
+              '• Data e Hora: ' +
+              dataHoraFormatada +
+              '\n' +
+              '• Assunto: ' +
+              assuntoLead +
+              '\n' +
+              '• Status: pendente\n'
+
+            if (obsLead) {
+              textBody += '• Observações: ' + obsLead + '\n'
+            }
+
+            textBody +=
+              '\nPor favor, acesse o painel em /reunioes para confirmar ou gerenciar este compromisso.\n\n' +
+              '---\n' +
+              'Consultor Digital — Camada de Integração'
+
+            // 5. Montar Corpo em HTML
+            const htmlObsRow = obsLead
+              ? '<tr><td style="padding: 8px 12px; color: #64748b; font-size: 13px; vertical-align: top;">Observações:</td><td style="padding: 8px 12px; color: #0f172a; font-size: 13px;">' +
+                obsLead.replace(/\n/g, '<br/>') +
+                '</td></tr>'
+              : ''
+
+            const htmlBody =
+              '<div style="font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b; line-height: 1.5;">' +
+              '<div style="background: ' +
+              (hasConflict ? '#b91c1c' : '#0f766e') +
+              '; padding: 20px; border-radius: 8px 8px 0 0; color: #ffffff;">' +
+              '<h2 style="margin: 0; font-size: 20px;">Nova Reunião Agendada</h2>' +
+              '<p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.95;">' +
+              (hasConflict
+                ? '⚠ Alerta de conflito de horário'
+                : 'Consultor Digital — Notificação Instantânea') +
+              '</p>' +
+              '</div>' +
+              '<div style="background: #ffffff; padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">' +
+              conflictHtmlSection +
+              '<table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">' +
+              '<tr><td style="padding: 8px 12px; color: #64748b; font-size: 13px; width: 110px;">Nome:</td><td style="padding: 8px 12px; color: #0f172a; font-size: 13px; font-weight: bold;">' +
+              nomeLead +
+              '</td></tr>' +
+              '<tr><td style="padding: 8px 12px; color: #64748b; font-size: 13px;">Empresa:</td><td style="padding: 8px 12px; color: #0f172a; font-size: 13px;">' +
+              empresaLead +
+              '</td></tr>' +
+              '<tr><td style="padding: 8px 12px; color: #64748b; font-size: 13px;">Data e Hora:</td><td style="padding: 8px 12px; color: #0f766e; font-size: 13px; font-weight: bold;">' +
+              dataHoraFormatada +
+              '</td></tr>' +
+              '<tr><td style="padding: 8px 12px; color: #64748b; font-size: 13px;">E-mail:</td><td style="padding: 8px 12px; color: #0f172a; font-size: 13px; font-family: monospace;">' +
+              emailLead +
+              '</td></tr>' +
+              '<tr><td style="padding: 8px 12px; color: #64748b; font-size: 13px;">Telefone:</td><td style="padding: 8px 12px; color: #0f172a; font-size: 13px; font-family: monospace;">' +
+              telefoneLead +
+              '</td></tr>' +
+              '<tr><td style="padding: 8px 12px; color: #64748b; font-size: 13px;">Assunto:</td><td style="padding: 8px 12px; color: #0f172a; font-size: 13px;">' +
+              assuntoLead +
+              '</td></tr>' +
+              '<tr><td style="padding: 8px 12px; color: #64748b; font-size: 13px;">Status:</td><td style="padding: 8px 12px;"><span style="background: #fef3c7; color: #92400e; font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: bold;">pendente</span></td></tr>' +
+              htmlObsRow +
+              '</table>' +
+              '<div style="text-align: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0;">' +
+              '<p style="margin: 0; font-size: 13px; color: #475569;">Por favor, acesse o painel para confirmar ou gerenciar este agendamento.</p>' +
+              '</div>' +
+              '</div>' +
+              '</div>'
+
+            // 6. Configurações de remetente
+            const settings = $app.settings()
+            const senderAddress =
+              (settings && settings.meta && settings.meta.senderAddress) ||
+              (settings && settings.smtp && settings.smtp.username) ||
+              'noreply@mail.goskip.dev'
+            const senderName =
+              (settings && settings.meta && settings.meta.senderName) || 'Consultor Digital'
+
+            // 7. Envio do e-mail para os destinatários
+            for (let i = 0; i < recipientEmails.length; i++) {
+              const toEmail = recipientEmails[i]
+              const msg = new MailerMessage({
+                from: {
+                  address: senderAddress,
+                  name: senderName,
+                },
+                to: [{ address: toEmail }],
+                subject: subject,
+                text: textBody,
+                html: htmlBody,
+              })
+
+              $app.newMailClient().send(msg)
+              console.log(
+                '[INSTANT_EMAIL] E-mail de notificação de reunião enviado com sucesso para: ' +
+                  toEmail,
+              )
+            }
+
+            console.log(
+              '[INSTANT_EMAIL] Notificação instantânea enviada (request_id: ' + requestId + ')',
+            )
+          } catch (mailErr) {
+            // Tolerância a falha: erro no envio de e-mail NUNCA quebra a resposta da tool
+            const errStr = mailErr && mailErr.message ? String(mailErr.message) : String(mailErr)
+            console.error('[INSTANT_EMAIL_ERROR] Falha ao enviar notificação por e-mail:', errStr)
           }
         },
       }
@@ -441,8 +746,9 @@
           }
         },
 
-        // Executa lógica de persistência com política de idempotência (email + data_hora)
-        execute: (sanitizedData, repository, reqId) => {
+        // Executa lógica de persistência com política de idempotência (email + data_hora),
+        // detecção não-bloqueante de conflito de horário e envio instantâneo tolerante a falhas
+        execute: (sanitizedData, repository, notifier, reqId) => {
           // 1. Idempotência: verificar existência prévia por email + data_hora
           const existingMeeting = repository.findMeetingByEmailDataHora(
             sanitizedData.email,
@@ -457,10 +763,21 @@
               meeting_status: existingMeeting.status,
               data_hora: existingMeeting.data_hora,
               created_at: existingMeeting.created,
+              conflito: false,
+              conflito_com: 0,
             }
           }
 
-          // 2. Nova solicitação de reunião (status inicial sempre 'pendente')
+          // 2. Verificação de conflito de horário:
+          // Existe outra reunião no mesmo data_hora com status pendente ou confirmada de OUTRO e-mail?
+          // Não bloqueia o agendamento; apenas sinaliza via payload e destaca no e-mail instantâneo.
+          const conflictingMeetings = repository.findConflictingMeetings
+            ? repository.findConflictingMeetings(sanitizedData.email, sanitizedData.data_hora)
+            : []
+          const conflictCount = conflictingMeetings.length
+          const hasConflict = conflictCount > 0
+
+          // 3. Nova solicitação de reunião (status inicial sempre 'pendente')
           // Trata race condition: se houver violação de constraint de unicidade no insert,
           // recupera o registro vencedor e retorna HTTP 200 com duplicado: true
           let createdRecord = null
@@ -487,10 +804,25 @@
                   meeting_status: concurrentWinner.status,
                   data_hora: concurrentWinner.data_hora,
                   created_at: concurrentWinner.created,
+                  conflito: false,
+                  conflito_com: 0,
                 }
               }
             }
             throw insertErr
+          }
+
+          // 4. Envio instantâneo de e-mail aos administradores (tolerante a falha)
+          // Apenas para reuniões recém-criadas (não duplicadas)
+          if (notifier && typeof notifier.sendInstantMeetingEmail === 'function') {
+            try {
+              notifier.sendInstantMeetingEmail(sanitizedData, conflictCount, conflictingMeetings)
+            } catch (notifErr) {
+              console.error(
+                '[INSTANT_EMAIL_DISPATCH_ERROR]',
+                notifErr && notifErr.message ? notifErr.message : notifErr,
+              )
+            }
           }
 
           return {
@@ -500,6 +832,8 @@
             meeting_status: createdRecord.status,
             data_hora: createdRecord.data_hora,
             created_at: createdRecord.created,
+            conflito: hasConflict,
+            conflito_com: conflictCount,
           }
         },
       }
@@ -529,8 +863,9 @@
           validate: (input) => scheduleMeetingDomainService.validateAndSanitize(input),
           run: (sanitizedData, context) => {
             const repo = (context && context.repository) || meetingRepository
+            const notif = (context && context.notifier) || notificationService
             const rId = (context && context.requestId) || requestId
-            return scheduleMeetingDomainService.execute(sanitizedData, repo, rId)
+            return scheduleMeetingDomainService.execute(sanitizedData, repo, notif, rId)
           },
         },
       }
@@ -561,6 +896,7 @@
       try {
         const domainResult = tool.run(validationResult.sanitized, {
           repository: meetingRepository,
+          notifier: notificationService,
           requestId: requestId,
         })
 
@@ -573,6 +909,7 @@
         })
 
         // 4. Envelope de Resposta Padronizado HTTP
+        // Inclui campos aditivos: conflito (boolean) e conflito_com (número de reuniões no mesmo slot)
         return e.json(domainResult.status, {
           ok: true,
           data: {
@@ -581,6 +918,9 @@
             data_hora: domainResult.data_hora,
             created_at: domainResult.created_at,
             duplicado: domainResult.duplicado,
+            conflito: Boolean(domainResult.conflito),
+            conflito_com:
+              typeof domainResult.conflito_com === 'number' ? domainResult.conflito_com : 0,
           },
         })
       } catch (executionErr) {
