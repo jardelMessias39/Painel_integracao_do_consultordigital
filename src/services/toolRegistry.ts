@@ -1,4 +1,5 @@
 import type { ToolDefinition } from '@/types/integration'
+import { resolvePocketBaseUrl } from '@/lib/pocketbase/client'
 
 // Prefixos e caminhos dos endpoints
 const ROUTE_API_PREFIX = '/api'
@@ -120,9 +121,7 @@ export const INTEGRATION_CONFIG = {
   publicToolsRegistryPath: PUBLIC_TOOLS_REGISTRY_PATH,
   publicMcpAdapterPath: PUBLIC_MCP_ADAPTER_PATH,
   // URL interna/direta ao PocketBase
-  backendUrl:
-    import.meta.env.VITE_POCKETBASE_URL ||
-    'https://integracao-de-ferramentas-do-consultor-e38b8.shrd00.internal.goskip.dev',
+  backendUrl: resolvePocketBaseUrl(),
   internalEndpointPath: ROUTE_CREATE_LEAD,
   internalScheduleMeetingPath: ROUTE_SCHEDULE_MEETING,
   internalSendEmailPath: ROUTE_SEND_EMAIL,

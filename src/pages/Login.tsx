@@ -57,11 +57,26 @@ export default function Login() {
           ? (err as { status?: number }).status
           : undefined
 
-      if (status === 400 || msg.includes('Failed to authenticate')) {
+      const lowerMsg = msg.toLowerCase()
+
+      if (status === 400 || lowerMsg.includes('failed to authenticate')) {
         setErrorMessage('Credenciais inválidas. Verifique seu e-mail e senha.')
-      } else if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || status === 0) {
+      } else if (status === 404) {
+        setErrorMessage(
+          'Servidor PocketBase não encontrado (HTTP 404). O endereço configurado para o backend não respondeu à rota de autenticação.',
+        )
+      } else if (
+        status === 0 ||
+        lowerMsg.includes('failed to fetch') ||
+        lowerMsg.includes('networkerror') ||
+        lowerMsg.includes('load failed')
+      ) {
         setErrorMessage(
           'Erro de conexão com o servidor PocketBase. Verifique se a URL do backend está acessível e tente novamente.',
+        )
+      } else if (status && status >= 500) {
+        setErrorMessage(
+          `O servidor do backend retornou um erro interno (HTTP ${status}). Tente novamente em instantes.`,
         )
       } else {
         setErrorMessage('Erro ao autenticar. Verifique sua conexão e tente novamente.')
