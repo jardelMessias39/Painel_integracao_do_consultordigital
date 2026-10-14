@@ -129,3 +129,15 @@ npm run build
 ```
 
 Os arquivos otimizados serão gerados na pasta `dist/` e estarão prontos para deploy.
+
+## 🌐 Deploy na Vercel & Configuração de Variáveis de Ambiente
+
+Ao realizar o deploy do frontend na Vercel (ex.: `https://ferramentaconsultordigital.vercel.app`):
+
+1. Acesse o painel do seu projeto na Vercel: **Settings → Environment Variables**.
+2. Adicione a variável de ambiente necessária para o cliente PocketBase:
+   - **Key**: `VITE_POCKETBASE_URL`
+   - **Value**: `https://integracao-de-ferramentas-do-consultor-e38b8.shrd00.internal.goskip.dev`
+   - **Target**: marque **Production**, **Preview** e **Development**.
+3. Re-faça o deploy (ou dispare um **Redeploy** em **Deployments → ... → Redeploy**) para que a Vercel incorpore a variável de ambiente durante a build do Vite.
+4. Caso a variável não seja configurada, o frontend inclui automaticamente fallback seguro para a URL canônica do backend, mas a definição explícita na Vercel é recomendada.

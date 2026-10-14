@@ -52,11 +52,20 @@ export default function Login() {
       navigate('/')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Falha na autenticação'
-      setErrorMessage(
-        msg.includes('Failed to authenticate')
-          ? 'Credenciais inválidas. Verifique seu e-mail e senha.'
-          : 'Erro ao autenticar. Verifique sua conexão e tente novamente.',
-      )
+      const status =
+        typeof err === 'object' && err !== null && 'status' in err
+          ? (err as { status?: number }).status
+          : undefined
+
+      if (status === 400 || msg.includes('Failed to authenticate')) {
+        setErrorMessage('Credenciais inválidas. Verifique seu e-mail e senha.')
+      } else if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || status === 0) {
+        setErrorMessage(
+          'Erro de conexão com o servidor PocketBase. Verifique se a URL do backend está acessível e tente novamente.',
+        )
+      } else {
+        setErrorMessage('Erro ao autenticar. Verifique sua conexão e tente novamente.')
+      }
     } finally {
       setIsSubmitting(false)
     }
